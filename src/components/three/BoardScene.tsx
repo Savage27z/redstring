@@ -71,3 +71,59 @@ function TweenDriver({ store }: { store: BoardTweenStore }) {
   }, -10);
   return null;
 }
+
+/**
+ * Frames the cork, with just enough easel below it to read as a standing
+ * object, then adds a little pointer parallax so it sits in space.
+ *
+ * Fitting the *entire* easel — legs, feet and floor — spent a third of the
+ * frame on furniture and left the board, which is the whole product, small.
+ * The bottom of frame cuts through the legs instead.
+ */
+function CameraFit({ parallax }: { parallax: boolean }) {
+  const { camera, size, pointer } = useThree();
+
+  // On a phone even the legs are too expensive: frame the cork alone and let
+  // the easel run out of shot. Keyed to width, not aspect — the mobile canvas
+  // is a short wide strip, so an aspect test reads it as landscape and picks
+  // the wrong framing.
+  const { compact, outerW } = useBoardDims();
+
+  const { baseZ, target } = useMemo(() => {
+    const cam = camera as THREE.PerspectiveCamera;
+    const vAspect = size.width / Math.max(1, size.height);
+    const halfFov = (CAMERA_FOV / 2) * (Math.PI / 180);
+
+    // how much easel to show beneath the bottom rail
+    const legroom = compact ? 0.04 : 0.5;
+
+    const top = BOARD_Y + OUTER_H / 2;
+    const bottom = BOARD_Y - OUTER_H / 2 - legroom;
+
+    const sceneH = (top - bottom) * 1.02;
+    const sceneW = outerW * 1.03;
+
+    const zForH = sceneH / 2 / Math.tan(halfFov);
+    const zForW = sceneW / 2 / (Math.tan(halfFov) * vAspect);
+
+    cam.fov = CAMERA_FOV;
+    cam.updateProjectionMatrix();
+
+    return {
+      baseZ: Math.max(zForH, zForW),
+      target: new THREE.Vector3(0, (top + bottom) / 2, 0),
+    };
+  }, [camera, size.width, size.height, compact, outerW]);
+
+  useFrame((_, delta) => {
+    const k = Math.min(1, delta * 3.2);
+    const px = parallax ? pointer.x * 0.28 : 0;
+    const py = parallax ? pointer.y * 0.18 : 0;
+    camera.position.x += (px - camera.position.x) * k;
+    camera.position.y += (target.y + 0.14 + py - camera.position.y) * k;
+    camera.position.z += (baseZ - camera.position.z) * k;
+    camera.lookAt(target);
+  });
+
+  return null;
+}
