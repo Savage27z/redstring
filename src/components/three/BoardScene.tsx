@@ -44,3 +44,17 @@ function useBoardDims() {
     outerH: OUTER_H,
   };
 }
+
+/** How far the easel leans back. */
+const LEAN = 0.085;
+
+const CAMERA_FOV = 34;
+
+function seedOf(id: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < id.length; i++) {
+    h ^= id.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return Math.abs(h % 100000);
+}
