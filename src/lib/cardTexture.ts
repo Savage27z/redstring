@@ -141,3 +141,43 @@ function curledCorner(ctx: CanvasRenderingContext2D, W: number, H: number, size:
   ctx.fill();
   ctx.restore();
 }
+
+export function drawCard(spec: CardSpec, W: number, H: number): HTMLCanvasElement {
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(8, Math.round(W));
+  canvas.height = Math.max(8, Math.round(H));
+  const ctx = canvas.getContext('2d')!;
+  const w = canvas.width;
+  const h = canvas.height;
+  const S = Math.min(w, h);
+
+  const big = w > 175 && h > 130;
+  const mid = w > 92 && h > 60;
+
+  if (spec.stock === 'photo') drawPhoto(ctx, w, h, S, spec, big, mid);
+  else if (spec.stock === 'sticky') drawSticky(ctx, w, h, S, spec, big, mid);
+  else if (spec.stock === 'lined') drawLined(ctx, w, h, S, spec, big, mid);
+  else drawScrap(ctx, w, h, spec);
+
+  // rank chip — the one element every card carries at every size
+  if (h >= 20 && w >= 20) {
+    const chip = Math.max(13, S * 0.1);
+    ctx.fillStyle = spec.rank === 1 ? RED : 'rgba(24,22,18,0.82)';
+    ctx.fillRect(0, 0, chip * 1.55, chip * 1.2);
+    ctx.fillStyle = '#f6f2e6';
+    ctx.font = caseFont(chip * 0.76);
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+    ctx.fillText(String(spec.rank), chip * 0.78, chip * 0.62);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+  }
+
+  grain(ctx, w, h, spec.stock === 'photo' ? 0.045 : 0.06);
+
+  ctx.strokeStyle = 'rgba(0,0,0,0.28)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(0.5, 0.5, w - 1, h - 1);
+
+  return canvas;
+}
