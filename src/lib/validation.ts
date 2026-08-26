@@ -5,8 +5,8 @@ import { CATEGORIES } from './types';
 /**
  * One place where every limit lives.
  *
- * These used to be enforced inside `placeBid` — which runs *after* Stripe has
- * charged the card. Anything oversized therefore failed at the point where the
+ * These used to be enforced inside `placeBid` — which runs *after* Polar has
+ * taken the payment. Anything oversized therefore failed at the point where the
  * money was already gone. Validation now happens before a Checkout session is
  * ever created, and the store re-applies it as defence in depth.
  */
@@ -17,15 +17,15 @@ export const LIMITS = {
   url: 200,
   bidderName: 40,
   /**
-   * Stripe rejects a `unit_amount` over 99999999 (=$999,999.99), so anything
-   * above this is unpayable and would surface as an opaque 500. It also keeps a
-   * single bid from flattening every other card to the same minimum size.
+   * A ceiling keeps one bid from flattening every other card to the same
+   * minimum size, and keeps the charge inside sane processor limits. Raise it
+   * deliberately rather than by accident.
    */
   maxBid: 250_000,
 } as const;
 
-/** Stripe metadata values are capped at 500 characters. */
-export const STRIPE_METADATA_MAX = 500;
+/** Polar metadata values are capped at 500 characters per key. */
+export const METADATA_VALUE_MAX = 500;
 
 export interface NewCaseInput {
   title: string;
@@ -147,7 +147,7 @@ export function validateNewCase(raw: unknown): Validated<NewCaseInput> {
  */
 export function encodeCaseMetadata(value: NewCaseInput): Validated<string> {
   const json = JSON.stringify(value);
-  if (json.length > STRIPE_METADATA_MAX) {
+  if (json.length > METADATA_VALUE_MAX) {
     return { ok: false, error: 'Those details are too long to submit.' };
   }
   return { ok: true, value: json };

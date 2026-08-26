@@ -2,7 +2,7 @@
  * Fixed-window rate limiter, in process.
  *
  * Enough to stop one client hammering Checkout — which in dev mode mutates the
- * board for free, and in production creates real Stripe sessions. Like the
+ * board for free, and in production creates real Polar checkouts. Like the
  * board bus this is single-instance only; behind more than one node, move it to
  * Redis. The surface is one function.
  */

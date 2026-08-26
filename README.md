@@ -55,7 +55,7 @@ genuinely unordered, and stable at 60 cards.
 | Storage adapters | `src/lib/db/` | `memory.ts` (default), `postgres.ts` |
 | Rate limiting | `src/lib/rateLimit.ts` | In-process fixed window |
 | Realtime | `src/app/api/stream/route.ts` | SSE + polling fallback |
-| Payment | `src/app/api/checkout/route.ts` | Stripe Checkout; dev mode without keys |
+| Payment | `src/lib/payments.ts` | Polar (merchant of record); dev mode without keys |
 
 ### Three decisions worth knowing
 
@@ -78,19 +78,29 @@ to #1.
 
 ## Going to production
 
-1. **Payments.** Set `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`. Checkout
-   refuses to run in production without them. The webhook at
-   `/api/webhooks/stripe` is the *only* thing that mutates the board — the
-   success URL is not proof of payment, anyone can type it.
+1. **Payments (Polar).** Polar is the merchant of record, which is what makes
+   this workable from Nigeria where Stripe is unavailable. Set
+   `POLAR_ACCESS_TOKEN`, `POLAR_PRODUCT_ID` and `POLAR_WEBHOOK_SECRET`;
+   checkout refuses to run in production without them, and `POLAR_SERVER`
+   defaults to `sandbox` so going live is deliberate.
 
-   ```bash
-   stripe listen --forward-to localhost:3000/api/webhooks/stripe
-   ```
+   Create exactly **one** product in Polar. Its catalog price never applies:
+   each checkout attaches a one-off fixed price equal to that bid, so the buyer
+   cannot edit the amount (which pay-what-you-want pricing would allow).
 
-   The webhook is idempotent: it keys on the Checkout session id, so Stripe's
-   retries and duplicate deliveries cannot apply the same bid twice. The amount
-   credited comes from `session.amount_total` — the actual charge — not from
-   metadata. Both are covered by `npm run smoke`, which signs a real webhook
+   Point a webhook at `/api/webhooks/polar` subscribed to `order.paid`. That is
+   the *only* thing that mutates the board — the success URL is not proof of
+   payment, anyone can type it. The handler is idempotent on the Polar order id,
+   so retries and duplicate deliveries cannot apply the same bid twice, and the
+   amount credited comes from the order total rather than metadata.
+
+   Signature verification is strict, but payload parsing is deliberately loose:
+   the SDK's `validateEvent` also runs the body through a generated schema for
+   the entire Order and rejects the event if any field drifts, which would mean
+   a paid order silently never reaching the board after an unrelated Polar
+   change. We verify the signature, then read only the fields we need.
+
+   `npm run smoke` covers all of this — it signs a real Standard Webhooks
    payload locally and replays it.
 
 2. **Persistence.** Run `schema.sql`, set `DATABASE_URL`, and the Postgres
@@ -120,7 +130,7 @@ as a display label only.
 
 Two things to get right:
 
-- **Keep `/api/webhooks/stripe` public.** Behind auth middleware Stripe gets
+- **Keep `/api/webhooks/polar` public.** Behind auth middleware Polar gets
   401s and payments silently stop applying. `/api/board` and `/api/stream` must
   stay public too, or the board won't render for logged-out visitors.
 - **Link identity to payment** with `client_reference_id` on the Checkout
@@ -128,8 +138,8 @@ Two things to get right:
 
 ### Known gaps
 
-- **Race at checkout.** If someone is outbid while their Stripe Checkout tab is
-  open, the payment captures but the slot is gone. The webhook logs
+- **Race at checkout.** If someone is outbid while their Polar checkout is
+  open, the payment goes through but the slot is gone. The webhook logs
   `needsRefund: true`; wire that to a refund job before taking real money.
 - **No moderation.** Anything paid goes straight onto the board. URLs are
   validated as well-formed http(s), which is not the same as trustworthy —

@@ -90,7 +90,7 @@ export default function BidModal({
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || 'Something went wrong.');
 
-      // Stripe configured -> hand off to Checkout. Otherwise the server already
+      // Polar configured -> hand off to checkout. Otherwise the server already
       // applied the bid (dev mode) and the board is about to reflow via SSE.
       if (data.checkoutUrl) {
         window.location.href = data.checkoutUrl;
