@@ -13,3 +13,11 @@ import type { BoardCell } from '@/lib/scatter';
  * no React involved — which is also what guarantees the string stays attached
  * to the pins it's tied to.
  */
+
+export interface LiveRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  rank: number;
+}
