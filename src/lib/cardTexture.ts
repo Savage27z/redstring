@@ -263,3 +263,66 @@ function drawPhoto(
     ctx.fillText(money(spec.bid), ix + pad * 0.6, iy + ih - pad * 0.7);
   }
 }
+
+/* ----------------------------------------------------------------- sticky */
+function drawSticky(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  S: number,
+  spec: CardSpec,
+  big: boolean,
+  mid: boolean,
+) {
+  const g = ctx.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, STICKY);
+  g.addColorStop(1, STICKY_DEEP);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+
+  const strip = ctx.createLinearGradient(0, 0, 0, h * 0.26);
+  strip.addColorStop(0, 'rgba(120,80,0,0.12)');
+  strip.addColorStop(1, 'rgba(120,80,0,0)');
+  ctx.fillStyle = strip;
+  ctx.fillRect(0, 0, w, h * 0.26);
+
+  if (h > 70) {
+    ctx.strokeStyle = 'rgba(150,105,10,0.22)';
+    ctx.lineWidth = 1;
+    const step = Math.max(9, S * 0.13);
+    ctx.beginPath();
+    for (let y = step * 1.6; y < h - step * 0.4; y += step) {
+      ctx.moveTo(S * 0.07, y);
+      ctx.lineTo(w - S * 0.07, y);
+    }
+    ctx.stroke();
+  }
+
+  if (mid) {
+    const pad = Math.max(5, S * 0.09);
+    ctx.fillStyle = '#3d2f06';
+    ctx.textAlign = 'left';
+    const t = big ? Math.min(S * 0.15, w * 0.12) : Math.min(S * 0.18, w * 0.14);
+    ctx.font = caseFont(t);
+    let y = pad + t * 1.1;
+    for (const ln of wrap(ctx, spec.title, w - pad * 2, big ? 2 : 1)) {
+      ctx.fillText(ln, pad, y);
+      y += t * 1.1;
+    }
+    if (big && spec.tagline) {
+      ctx.fillStyle = 'rgba(61,47,6,0.72)';
+      const ts = Math.max(9, Math.min(S * 0.06, w * 0.06));
+      ctx.font = bodyFont(ts);
+      y += S * 0.02;
+      for (const ln of wrap(ctx, spec.tagline, w - pad * 2, 2)) {
+        y += ts * 1.3;
+        ctx.fillText(ln, pad, y);
+      }
+    }
+    ctx.fillStyle = RED;
+    ctx.font = caseFont(big ? Math.min(S * 0.14, w * 0.16) : Math.min(S * 0.17, w * 0.15));
+    ctx.fillText(money(spec.bid), pad, h - pad);
+  }
+
+  if (w > 44 && h > 44) curledCorner(ctx, w, h, Math.min(S * 0.2, 40));
+}
