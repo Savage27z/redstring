@@ -19,3 +19,16 @@ CREATE TABLE IF NOT EXISTS submissions (
 );
 
 -- The board query is "active submissions, highest bid first" on every render.
+CREATE INDEX IF NOT EXISTS submissions_board_idx
+  ON submissions (current_bid DESC)
+  WHERE status = 'active';
+
+CREATE TABLE IF NOT EXISTS bid_history (
+  id             TEXT PRIMARY KEY,
+  submission_id  TEXT        NOT NULL REFERENCES submissions(id) ON DELETE CASCADE,
+  amount         INTEGER     NOT NULL CHECK (amount > 0),
+  bidder_name    TEXT        NOT NULL DEFAULT 'anon',
+  previous_bid   INTEGER,
+  stripe_session TEXT UNIQUE,          -- idempotency: one session, one bid
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
