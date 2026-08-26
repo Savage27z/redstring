@@ -5,16 +5,12 @@
  *   npm run smoke          # in another
  *
  * Covers the things unit tests cannot reach: that oversized or malformed input
- * is rejected BEFORE a Checkout session exists, that rate limiting engages, and
- * that a replayed Polar webhook does not apply the same bid twice.
- *
- * Webhook payloads are signed locally with the same Standard Webhooks library
- * that Polar's SDK verifies with, so this exercises the real verification path.
+ * is rejected BEFORE any payment is opened, that rate limiting engages, and
+ * that the crypto settlement endpoints refuse anything they cannot verify
+ * on chain.
  */
-import crypto from 'node:crypto';
 
 const BASE = process.env.SMOKE_BASE ?? 'http://localhost:3000';
-const WEBHOOK_SECRET = process.env.POLAR_WEBHOOK_SECRET ?? '';
 
 let failures = 0;
 const check = (name, cond, extra = '') => {
@@ -114,18 +110,86 @@ console.log(`--- validation (${BASE})`);
       after.submissions.some((s) => s.title === 'Valid Entry' && s.url.startsWith('https://')),
     );
   } else {
-    console.log('skip  valid-submission tests (Polar configured, so checkout defers to Polar)');
+    console.log('skip  valid-submission tests (a chain is configured, so checkout opens a payment)');
     check(
-      'valid submission does NOT bypass payment when Polar is configured',
+      'valid submission does NOT bypass payment when a chain is configured',
       after.submissions.length === before.submissions.length,
       'a bid landed without payment',
     );
   }
 }
 
+console.log('\n--- crypto payment rails');
+{
+  const res = await fetch(BASE + '/api/chains', { cache: 'no-store' });
+  const data = await res.json();
+  check('chains endpoint responds', res.status === 200, `got ${res.status}`);
+  check('testnet flag present', typeof data.testnet === 'boolean');
+
+  if (!data.chains?.length) {
+    console.log('skip  no chain configured (set SOLANA_RECIPIENT / BASE_RECIPIENT)');
+  } else {
+    console.log(`      configured: ${data.chains.map((c) => c.id).join(', ')} (testnet=${data.testnet})`);
+
+    for (const c of data.chains) {
+      const before = await board();
+      const r = await post('/api/checkout', {
+        amount: 9,
+        bidderName: 'crypto-tester',
+        chain: c.id,
+        newCase: newCase({ title: `Pay ${c.id}` }),
+      });
+      const after = await board();
+
+      check(`${c.id}: checkout opens a payment intent`, !!r.json?.intent, JSON.stringify(r.json));
+      check(
+        `${c.id}: nothing reaches the board before payment`,
+        after.submissions.length === before.submissions.length,
+        'an unpaid bid landed',
+      );
+
+      if (c.id === 'solana') {
+        check('solana: returns a solana: URL', !!r.json?.solana?.url?.startsWith('solana:'));
+        check('solana: returns a QR image', !!r.json?.solana?.qr?.startsWith('data:image/'));
+      } else {
+        check('base: returns ERC-20 transfer calldata', !!r.json?.base?.data?.startsWith('0xa9059cbb'));
+        check('base: pins the chain id', typeof r.json?.base?.chainId === 'number');
+      }
+
+      const id = r.json?.intent?.id;
+      if (id) {
+        const poll = await fetch(`${BASE}/api/payments/${id}`, { cache: 'no-store' }).then((x) =>
+          x.json(),
+        );
+        check(`${c.id}: unpaid intent still pending`, poll.intent?.status === 'pending',
+          JSON.stringify(poll.intent));
+
+        const bogus = await post(`/api/payments/${id}`, { txHash: '0x' + 'de'.repeat(32) });
+        const afterBogus = await board();
+        check(
+          `${c.id}: bogus tx hash does not settle`,
+          bogus.json?.intent?.status !== 'confirmed',
+          JSON.stringify(bogus.json?.intent),
+        );
+        check(
+          `${c.id}: bogus tx hash places no bid`,
+          afterBogus.submissions.length === before.submissions.length,
+        );
+      }
+    }
+  }
+
+  const unknown = await fetch(`${BASE}/api/payments/pay_doesnotexist`, { cache: 'no-store' }).then(
+    (x) => x.json(),
+  );
+  check('unknown payment id is rejected', !!unknown.error, JSON.stringify(unknown));
+}
+
+
 console.log('\n--- rate limiting');
 {
-  // the limit is 10/min; the calls above already consumed some of the window
+  // anything after it would 429 and look like a real failure.
+  // Runs last on purpose: it deliberately exhausts the checkout budget, so
   let sawLimit = false;
   for (let i = 0; i < 15; i++) {
     const r = await post('/api/checkout', { amount: 1 });
@@ -137,87 +201,6 @@ console.log('\n--- rate limiting');
   check('checkout rate limit engages', sawLimit);
 }
 
-console.log('\n--- webhook idempotency');
-if (!WEBHOOK_SECRET) {
-  console.log('skip  POLAR_WEBHOOK_SECRET not set (run the server with dummy Polar env)');
-} else {
-  // Signed with the same Standard Webhooks library Polar's SDK verifies with,
-  // so this drives the real verification path without touching the network.
-  const { Webhook } = await import('standardwebhooks');
-  const wh = new Webhook(Buffer.from(WEBHOOK_SECRET).toString('base64'));
-
-  const orderId = 'ord_' + crypto.randomBytes(8).toString('hex');
-  const event = {
-    type: 'order.paid',
-    data: {
-      id: orderId,
-      status: 'paid',
-      paid: true,
-      currency: 'usd',
-      net_amount: 4200,
-      total_amount: 4200,
-      billing_name: null,
-      customer_id: 'cus_smoketest',
-      checkout_id: 'chk_smoketest',
-      customer: { id: 'cus_smoketest', email: 'buyer@example.com' },
-      metadata: {
-        submissionId: '',
-        amount: 42,
-        bidderName: 'webhook-tester',
-        newCase: JSON.stringify(newCase({ title: 'Webhook Entry' })),
-      },
-    },
-  };
-
-  const payload = JSON.stringify(event);
-  const msgId = 'msg_' + crypto.randomBytes(8).toString('hex');
-  const timestamp = new Date();
-
-  const send = (signature) =>
-    fetch(BASE + '/api/webhooks/polar', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'webhook-id': msgId,
-        'webhook-timestamp': Math.floor(timestamp.getTime() / 1000).toString(),
-        'webhook-signature': signature,
-      },
-      body: payload,
-    }).then(async (r) => ({ status: r.status, json: await r.json().catch(() => null) }));
-
-  const goodSig = wh.sign(msgId, timestamp, payload);
-
-  const before = await board();
-  const first = await send(goodSig);
-  const mid = await board();
-  const second = await send(goodSig);
-  const after = await board();
-
-  check('signed webhook accepted', first.status === 200, JSON.stringify(first.json));
-  check(
-    'first delivery places the bid',
-    mid.submissions.length === before.submissions.length + 1,
-    `${before.submissions.length} -> ${mid.submissions.length}`,
-  );
-  check('replay reports duplicate', second.json?.duplicate === true, JSON.stringify(second.json));
-  check(
-    'replay does NOT place a second bid',
-    after.submissions.length === mid.submissions.length,
-    `${mid.submissions.length} -> ${after.submissions.length}`,
-  );
-  check(
-    'replay does NOT inflate total raised',
-    after.stats.totalRaised === mid.stats.totalRaised,
-    `${mid.stats.totalRaised} -> ${after.stats.totalRaised}`,
-  );
-  check(
-    'amount comes from the order total, not metadata',
-    after.submissions.some((s) => s.title === 'Webhook Entry' && s.currentBid === 42),
-  );
-
-  const forged = await send('v1,' + Buffer.from('nope').toString('base64'));
-  check('forged signature rejected', forged.status === 403, `got ${forged.status}`);
-}
 
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURES`);
 process.exit(failures ? 1 : 0);
