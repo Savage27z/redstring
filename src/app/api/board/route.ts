@@ -4,7 +4,7 @@ import { getBoardState } from '@/lib/store';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  return NextResponse.json(getBoardState(), {
+  return NextResponse.json(await getBoardState(), {
     headers: { 'Cache-Control': 'no-store' },
   });
 }
