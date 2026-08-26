@@ -33,3 +33,32 @@ function db(): Db {
   }
   return globalForDb.__redstringDb;
 }
+
+function id(prefix: string): string {
+  return `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+}
+
+export function getBoardState(): BoardState {
+  const d = db();
+  const active = d.submissions
+    .filter((s) => s.status === 'active')
+    .sort((a, b) => b.currentBid - a.currentBid || a.id.localeCompare(b.id));
+
+  const totalRaised = d.bids.reduce((sum, b) => sum + b.amount, 0);
+  const topBid = active[0]?.currentBid ?? 0;
+
+  return {
+    submissions: active,
+    recentBids: [...d.bids]
+      .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
+      .slice(0, 12),
+    stats: {
+      totalRaised,
+      totalCases: active.length,
+      topBid,
+      priceToTakeNumberOne: priceToBeat(topBid),
+      minimumBid: MIN_BID,
+      visitors: d.visitors,
+    },
+  };
+}
