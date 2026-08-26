@@ -30,3 +30,13 @@ export interface Submission {
   claimedAt: string; // ISO
   status: 'active' | 'pending';
 }
+
+export interface BidEvent {
+  id: string;
+  submissionId: string;
+  amount: number;
+  bidderName: string;
+  createdAt: string; // ISO
+  /** what it displaced, for the string/annotation trail */
+  previousBid: number | null;
+}
