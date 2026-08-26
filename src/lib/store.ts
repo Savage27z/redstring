@@ -156,3 +156,17 @@ export function placeBid(input: PlaceBidInput): PlaceBidResult {
   bus.publish(state); // every open board reflows within a tick
   return { ok: true, submission, state };
 }
+
+export function getSubmission(submissionId: string): Submission | undefined {
+  return db().submissions.find((s) => s.id === submissionId);
+}
+
+/* ---------------------------------------------------------------------------
+ * TODO (persistence): replace the four functions above with SQL against the
+ * schema in schema.sql. Signatures stay identical; nothing in the UI changes.
+ *
+ *   getBoardState  -> SELECT * FROM submissions WHERE status='active' ...
+ *   placeBid       -> BEGIN; UPDATE submissions ...; INSERT INTO bid_history ...; COMMIT;
+ *   getSubmission  -> SELECT * FROM submissions WHERE id = $1
+ *   bumpVisitors   -> UPDATE counters SET visitors = visitors + 1 RETURNING visitors
+ * ------------------------------------------------------------------------ */
