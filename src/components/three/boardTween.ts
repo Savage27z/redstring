@@ -89,3 +89,11 @@ export class BoardTweenStore {
     return this.current.get(id);
   }
 }
+
+export const BoardTweenContext = createContext<BoardTweenStore | null>(null);
+
+export function useBoardTween(): BoardTweenStore {
+  const store = useContext(BoardTweenContext);
+  if (!store) throw new Error('useBoardTween must be used inside the board canvas');
+  return store;
+}
