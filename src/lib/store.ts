@@ -22,3 +22,14 @@ interface Db {
 }
 
 const globalForDb = globalThis as unknown as { __redstringDb?: Db };
+
+function db(): Db {
+  if (!globalForDb.__redstringDb) {
+    globalForDb.__redstringDb = {
+      submissions: MOCK_SUBMISSIONS.map((s) => ({ ...s })),
+      bids: MOCK_BIDS.map((b) => ({ ...b })),
+      visitors: 1284,
+    };
+  }
+  return globalForDb.__redstringDb;
+}
