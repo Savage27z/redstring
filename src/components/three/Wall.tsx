@@ -116,3 +116,89 @@ interface Props {
   /** rail thickness */
   frame: number;
 }
+
+export default function Wall({ width, height, frame }: Props) {
+  const cork = useMemo(
+    () => (typeof document === 'undefined' ? null : corkTexture()),
+    [],
+  );
+  const wood = useMemo(
+    () => (typeof document === 'undefined' ? null : woodTexture()),
+    [],
+  );
+
+  const woodMat = useMemo(() => {
+    const m = new THREE.MeshStandardMaterial({
+      color: '#b98246',
+      roughness: 0.62,
+      metalness: 0.04,
+    });
+    if (wood) m.map = wood;
+    return m;
+  }, [wood]);
+
+  const depth = frame * 0.62;
+  const outerW = width + frame * 2;
+  const outerH = height + frame * 2;
+
+  return (
+    <group>
+      {/* cork panel, recessed inside the rails */}
+      <mesh position={[0, 0, -0.012]} receiveShadow>
+        <planeGeometry args={[width, height]} />
+        <meshStandardMaterial
+          map={cork ?? undefined}
+          color="#c98f52"
+          roughness={0.96}
+          metalness={0}
+        />
+      </mesh>
+
+      {/* backing board just behind the cork so the recess has a visible wall */}
+      <mesh position={[0, 0, -0.05]}>
+        <boxGeometry args={[outerW, outerH, 0.06]} />
+        <meshStandardMaterial color="#6b4522" roughness={0.9} />
+      </mesh>
+
+      {/* four rails */}
+      <mesh
+        position={[0, height / 2 + frame / 2, depth / 2 - 0.01]}
+        material={woodMat}
+        castShadow
+        receiveShadow
+      >
+        <boxGeometry args={[outerW, frame, depth]} />
+      </mesh>
+      <mesh
+        position={[0, -height / 2 - frame / 2, depth / 2 - 0.01]}
+        material={woodMat}
+        castShadow
+        receiveShadow
+      >
+        <boxGeometry args={[outerW, frame, depth]} />
+      </mesh>
+      <mesh
+        position={[-width / 2 - frame / 2, 0, depth / 2 - 0.01]}
+        material={woodMat}
+        castShadow
+        receiveShadow
+      >
+        <boxGeometry args={[frame, height, depth]} />
+      </mesh>
+      <mesh
+        position={[width / 2 + frame / 2, 0, depth / 2 - 0.01]}
+        material={woodMat}
+        castShadow
+        receiveShadow
+      >
+        <boxGeometry args={[frame, height, depth]} />
+      </mesh>
+
+      {/* inner lip: a thin dark bevel where the rails meet the cork */}
+      <lineSegments position={[0, 0, 0.002]} raycast={() => null}>
+        <edgesGeometry args={[new THREE.PlaneGeometry(width, height)]} />
+        <lineBasicMaterial color="#5e3a18" />
+      </lineSegments>
+    </group>
+  );
+}
