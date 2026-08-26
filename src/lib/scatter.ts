@@ -52,3 +52,12 @@ function hashId(id: string): number {
   }
   return Math.abs(h % 100000);
 }
+
+/** Stationery comes in a few shapes; picking per card gives the board variety. */
+function aspectFor(seed: number, rank: number): number {
+  const r = rand(seed * 3.1);
+  if (rank <= 3) return r > 0.5 ? 1.34 : 1.12; // photos, landscape-ish
+  if (r < 0.34) return 1.0; // square sticky
+  if (r < 0.67) return 0.78; // portrait notepaper
+  return 1.28; // landscape photo
+}
