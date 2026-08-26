@@ -195,8 +195,25 @@ console.log('\n--- crypto payment rails');
         const malformed = await post(`/api/payments/${id}`, { txHash: 'obviously-not-a-tx' });
         check(
           `${c.id}: malformed reference rejected`,
-          malformed.json?.intent?.status !== 'confirmed',
-          JSON.stringify(malformed.json?.intent),
+          malformed.status === 400 && malformed.json?.intent?.status !== 'confirmed',
+          JSON.stringify(malformed.json),
+        );
+
+        // Explorer links are what people actually copy, so they must be accepted
+        // as input even though the transaction itself is not real.
+        const asLink =
+          c.id === 'solana'
+            ? `https://solscan.io/tx/${'5'.repeat(87)}`
+            : `https://basescan.org/tx/0x${'de'.repeat(32)}`;
+        const linked = await post(`/api/payments/${id}`, { txHash: asLink });
+        check(
+          `${c.id}: explorer link parsed, not rejected as malformed`,
+          linked.status !== 400,
+          JSON.stringify(linked.json),
+        );
+        check(
+          `${c.id}: explorer link still settles nothing`,
+          linked.json?.intent?.status !== 'confirmed',
         );
       }
     }

@@ -51,11 +51,8 @@ export async function verifyBasePayment(
   config: ChainConfig,
   txHash: string,
   amountUnits: bigint,
+  notBefore?: number,
 ): Promise<BaseVerifyResult> {
-  if (!/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
-    return { ok: false, error: 'That is not a valid transaction hash.' };
-  }
-
   const client = createPublicClient({ transport: http(config.rpc) });
 
   let receipt;
@@ -68,6 +65,22 @@ export async function verifyBasePayment(
 
   if (receipt.status !== 'success') {
     return { ok: false, error: 'That transaction failed on chain.' };
+  }
+
+  // See the note in txref.ts: an id proves the transaction paid the board, not
+  // who sent it, so it has to be contemporary with the payment.
+  if (notBefore) {
+    try {
+      const block = await client.getBlock({ blockHash: receipt.blockHash });
+      if (Number(block.timestamp) * 1000 < notBefore) {
+        return {
+          ok: false,
+          error: 'That transaction is older than this payment. Start a new one and pay again.',
+        };
+      }
+    } catch {
+      // Could not read the block; fall through rather than block a real payer.
+    }
   }
 
   const usdc = getAddress(config.usdc);

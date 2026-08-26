@@ -2,6 +2,7 @@ import { placeBid } from '../store';
 import { chainConfig } from './chains';
 import { getIntent, updateIntent, publicIntent } from './intentStore';
 import { verifySolanaPayment, verifySolanaSignature } from './solana';
+import { claimNotBefore } from './txref';
 import { verifyBasePayment } from './base';
 import type { PaymentIntent } from './intentStore';
 
@@ -82,7 +83,7 @@ export async function settleIntent(
     // no reference to scan for — verify that exact transaction instead.
     const reported = submittedHash ?? intent.txHash;
     const verified = reported
-      ? await verifySolanaSignature(config, reported, intent.amount)
+      ? await verifySolanaSignature(config, reported, intent.amount, claimNotBefore(intent.createdAt))
       : await verifySolanaPayment(config, intent.reference!, intent.amount);
 
     if (!verified.ok && verified.pending && reported) {
@@ -101,7 +102,12 @@ export async function settleIntent(
   const hash = submittedHash ?? intent.txHash;
   if (!hash) return { intent: publicIntent(intent) };
 
-  const verified = await verifyBasePayment(config, hash, BigInt(intent.amountUnits));
+  const verified = await verifyBasePayment(
+    config,
+    hash,
+    BigInt(intent.amountUnits),
+    claimNotBefore(intent.createdAt),
+  );
   if (verified.ok) return applyBid(intent, hash);
 
   if (verified.pending) {

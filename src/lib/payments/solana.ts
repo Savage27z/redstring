@@ -118,10 +118,8 @@ export async function verifySolanaSignature(
   config: ChainConfig,
   signature: string,
   amountDollars: number,
+  notBefore?: number,
 ): Promise<SolanaVerifyResult> {
-  if (!/^[1-9A-HJ-NP-Za-km-z]{64,90}$/.test(signature)) {
-    return { ok: false, error: 'That is not a valid Solana transaction signature.' };
-  }
 
   const connection = new Connection(config.rpc, 'confirmed');
 
@@ -145,6 +143,16 @@ export async function verifySolanaSignature(
 
   const sum = (balances: readonly { mint?: string; owner?: string; uiTokenAmount: { amount: string } }[]) =>
     balances.filter(mine).reduce((total, b) => total + BigInt(b.uiTokenAmount.amount), 0n);
+
+  // An id alone proves the transaction paid the board, not that whoever pasted
+  // it is the one who sent it. Requiring it to be contemporary with the payment
+  // stops an old, unclaimed transfer being harvested for a free slot.
+  if (notBefore && tx.blockTime && tx.blockTime * 1000 < notBefore) {
+    return {
+      ok: false,
+      error: 'That transaction is older than this payment. Start a new one and pay again.',
+    };
+  }
 
   const received = sum(tx.meta?.postTokenBalances ?? []) - sum(tx.meta?.preTokenBalances ?? []);
   const needed = BigInt(Math.round(amountDollars * 1_000_000));

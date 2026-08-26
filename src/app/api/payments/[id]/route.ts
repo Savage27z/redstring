@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { settleIntent } from '@/lib/payments/settle';
+import { getIntent, publicIntent } from '@/lib/payments/intentStore';
+import { parseTxReference } from '@/lib/payments/txref';
 import { rateLimit, clientKey } from '@/lib/rateLimit';
 
 export const dynamic = 'force-dynamic';
@@ -33,9 +35,13 @@ export async function GET(
 }
 
 /**
- * Submit a transaction hash for an EVM payment (and as a manual fallback on
- * Solana for anyone who paid outside the flow). The hash is only a hint — the
- * server still verifies it against the chain before anything reaches the board.
+ * Report a payment the payer sent by hand.
+ *
+ * Accepts the transaction id or a link to it on any explorer — people copy the
+ * link far more often than the bare id. Either way it is only a pointer: the
+ * server still reads the transaction off the chain and checks it paid the right
+ * address, the right token and the right amount before anything reaches the
+ * board.
  */
 export async function POST(
   req: Request,
@@ -58,9 +64,17 @@ export async function POST(
     return NextResponse.json({ error: 'Malformed request.' }, { status: 400 });
   }
 
-  const txHash = typeof body.txHash === 'string' ? body.txHash.trim() : '';
-  if (!txHash) return NextResponse.json({ error: 'Missing transaction hash.' }, { status: 400 });
+  const intent = await getIntent(id);
+  if (!intent) return NextResponse.json({ error: 'Unknown payment.' }, { status: 404 });
 
-  const result = await settleIntent(id, txHash);
+  const parsed = parseTxReference(body.txHash, intent.chain);
+  if (!parsed.ok) {
+    return NextResponse.json(
+      { error: parsed.error, intent: publicIntent(intent) },
+      { status: 400 },
+    );
+  }
+
+  const result = await settleIntent(id, parsed.value);
   return NextResponse.json(result, { headers: { 'Cache-Control': 'no-store' } });
 }

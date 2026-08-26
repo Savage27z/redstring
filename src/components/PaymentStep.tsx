@@ -238,14 +238,12 @@ export default function PaymentStep({
         {
           <div>
             <span className={label}>
-              {isSolana
-                ? 'Then paste the transaction signature'
-                : 'Then paste the transaction hash'}
+              Then paste the transaction ID (or its explorer link)
             </span>
             <input
               value={manualHash}
               onChange={(e) => setManualHash(e.target.value)}
-              placeholder={isSolana ? '5Kq…' : '0x…'}
+              placeholder={isSolana ? '5Kq… or solscan.io/tx/…' : '0x… or basescan.org/tx/…'}
               spellCheck={false}
               className="w-full bg-[rgba(255,255,255,0.42)] px-3 py-2 font-[family-name:var(--font-case)] text-[12px] outline-none ring-1 ring-inset ring-[rgba(90,66,36,0.4)] focus:ring-2 focus:ring-[color:var(--color-string)]"
             />
@@ -260,7 +258,7 @@ export default function PaymentStep({
             </button>
             <p className="mt-2 text-[11px] leading-snug text-[color:var(--color-ink-faint)]">
               A payment sent this way can&rsquo;t be matched to your bid on its own — paste
-              the {isSolana ? 'signature' : 'hash'} and it settles immediately.
+              the transaction and it settles immediately.
             </p>
           </div>
         }
