@@ -20,3 +20,16 @@ import type { BoardCell } from '@/lib/scatter';
  * read on the same frame — which is what keeps every strand welded to its pin
  * mid-reflow instead of visibly detaching.
  */
+
+interface Props {
+  cells: BoardCell[];
+  boardW: number;
+  boardH: number;
+  hoveredId: string | null;
+}
+
+interface Edge {
+  a: string;
+  b: string;
+  taut: boolean;
+}
