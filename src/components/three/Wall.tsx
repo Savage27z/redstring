@@ -108,3 +108,11 @@ function woodTexture(): THREE.CanvasTexture {
   tex.wrapT = THREE.RepeatWrapping;
   return tex;
 }
+
+interface Props {
+  /** inner cork panel size, in world units */
+  width: number;
+  height: number;
+  /** rail thickness */
+  frame: number;
+}
