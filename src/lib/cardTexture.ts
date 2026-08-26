@@ -58,3 +58,16 @@ function caseFont(size: number): string {
 function bodyFont(size: number, weight = 400): string {
   return weight + ' ' + Math.round(size) + 'px ' + fontVar('--font-archivo', 'system-ui, sans-serif');
 }
+
+function money(n: number): string {
+  return '$' + n.toLocaleString('en-US');
+}
+
+function since(iso: string): string {
+  const mins = Math.max(0, Math.round((Date.now() - +new Date(iso)) / 60000));
+  if (mins < 1) return 'JUST NOW';
+  if (mins < 60) return mins + 'M AGO';
+  const h = Math.round(mins / 60);
+  if (h < 24) return h + 'H AGO';
+  return Math.round(h / 24) + 'D AGO';
+}
