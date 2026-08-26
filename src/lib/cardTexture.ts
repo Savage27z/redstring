@@ -21,3 +21,15 @@ export interface CardSpec {
   claimedAt: string;
   stock: PaperStock;
 }
+
+/**
+ * Big money gets a photo — the dominant, most "evidence" object on the wall.
+ * Mid-board alternates sticky and ruled paper so the wall has the same mixed
+ * stationery texture as the reference instead of one card repeated 15 times.
+ */
+export function stockForRank(rank: number, area: number): PaperStock {
+  if (area < 0.0035) return 'scrap';
+  if (rank <= 3) return 'photo';
+  if (area > 0.028) return 'photo';
+  return rank % 2 === 0 ? 'sticky' : 'lined';
+}
