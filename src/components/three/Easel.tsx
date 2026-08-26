@@ -50,3 +50,13 @@ function Strut({
     </mesh>
   );
 }
+
+interface Props {
+  /** outer size of the framed board */
+  boardW: number;
+  boardH: number;
+  /** y of the board's bottom rail */
+  bottomY: number;
+  /** y of the floor */
+  floorY: number;
+}
