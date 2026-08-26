@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { placeBid } from '@/lib/store';
-import type { Category } from '@/lib/types';
+import { validateNewCase } from '@/lib/validation';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -10,6 +10,10 @@ export const runtime = 'nodejs';
  *
  * A bid is real when Stripe says the money moved — not when the browser comes
  * back to the success URL, which anyone can forge by typing it.
+ *
+ * NOTE for auth: this route must stay public. If it ends up behind
+ * clerkMiddleware's protection, Stripe receives 401s and payments silently
+ * stop being applied.
  */
 export async function POST(req: Request) {
   const secret = process.env.STRIPE_SECRET_KEY;
@@ -26,58 +30,75 @@ export async function POST(req: Request) {
 
   const raw = await req.text();
 
+  let event;
   try {
     const { default: Stripe } = await import('stripe');
     const stripe = new Stripe(secret);
+    event = stripe.webhooks.constructEvent(raw, signature, webhookSecret);
+  } catch (err) {
+    console.error('[stripe webhook] signature verification failed', err);
+    return NextResponse.json({ error: 'Signature verification failed.' }, { status: 400 });
+  }
 
-    const event = stripe.webhooks.constructEvent(raw, signature, webhookSecret);
+  if (event.type !== 'checkout.session.completed') {
+    return NextResponse.json({ received: true });
+  }
 
-    if (event.type === 'checkout.session.completed') {
-      const session = event.data.object;
-      const md = session.metadata ?? {};
+  try {
+    const session = event.data.object;
+    const md = session.metadata ?? {};
 
-      const amount = Number(md.amount);
-      if (!Number.isFinite(amount) || amount <= 0) {
-        // Nothing actionable, but ack so Stripe stops retrying.
-        return NextResponse.json({ received: true, skipped: 'bad amount' });
-      }
+    // The charge is the source of truth for what was actually paid; metadata is
+    // only a hint about what it was for.
+    const paid = typeof session.amount_total === 'number' ? session.amount_total / 100 : NaN;
+    const amount = Number.isFinite(paid) ? Math.floor(paid) : Number(md.amount);
 
-      let newCase:
-        | {
-            title: string;
-            tagline: string;
-            url: string;
-            logoUrl: string | null;
-            category: Category;
-          }
-        | undefined;
+    if (!Number.isFinite(amount) || amount <= 0) {
+      // Nothing actionable — ack so Stripe stops retrying a poisoned event.
+      console.error('[stripe webhook] unusable amount', { session: session.id, md });
+      return NextResponse.json({ received: true, skipped: 'bad amount' });
+    }
 
-      if (md.newCase) {
-        try {
-          newCase = JSON.parse(md.newCase);
-        } catch {
-          /* fall through — treated as a bid without case details */
-        }
-      }
-
-      const result = placeBid({
-        submissionId: md.submissionId || undefined,
-        amount,
-        bidderName: md.bidderName || 'anon',
-        newCase,
-      });
-
-      if (!result.ok) {
-        // Someone outbid them while Checkout was open. Money is captured, the
-        // slot is gone — this is the refund queue in a real deployment.
-        console.error('[stripe webhook] bid rejected after payment:', result.error, md);
-        return NextResponse.json({ received: true, needsRefund: true });
+    let newCase;
+    if (md.newCase) {
+      try {
+        const parsed = validateNewCase(JSON.parse(md.newCase));
+        if (parsed.ok) newCase = parsed.value;
+        else console.error('[stripe webhook] invalid case metadata', parsed.error);
+      } catch (err) {
+        console.error('[stripe webhook] unparseable case metadata', err);
       }
     }
 
-    return NextResponse.json({ received: true });
+    if (!md.submissionId && !newCase) {
+      console.error('[stripe webhook] paid but nothing to place', { session: session.id });
+      return NextResponse.json({ received: true, needsRefund: true });
+    }
+
+    // session.id makes this idempotent: Stripe redelivers on any non-2xx and
+    // can deliver the same event more than once.
+    const result = await placeBid({
+      submissionId: md.submissionId || undefined,
+      amount,
+      bidderName: md.bidderName || 'anon',
+      newCase,
+      paymentRef: session.id,
+    });
+
+    if (!result.ok) {
+      // Outbid while their Checkout tab was open: money captured, slot gone.
+      console.error('[stripe webhook] bid rejected after payment', {
+        session: session.id,
+        error: result.error,
+      });
+      return NextResponse.json({ received: true, needsRefund: true });
+    }
+
+    return NextResponse.json({ received: true, duplicate: result.duplicate ?? false });
   } catch (err) {
-    console.error('[stripe webhook]', err);
-    return NextResponse.json({ error: 'Signature verification failed.' }, { status: 400 });
+    // A 500 makes Stripe retry, which is what we want for a transient database
+    // failure — the paymentRef keeps that retry from double-applying.
+    console.error('[stripe webhook] handler failed', err);
+    return NextResponse.json({ error: 'Handler failed.' }, { status: 500 });
   }
 }
