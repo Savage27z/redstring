@@ -326,3 +326,74 @@ function drawSticky(
 
   if (w > 44 && h > 44) curledCorner(ctx, w, h, Math.min(S * 0.2, 40));
 }
+
+/* ------------------------------------------------------------------ lined */
+function drawLined(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  S: number,
+  spec: CardSpec,
+  big: boolean,
+  mid: boolean,
+) {
+  ctx.fillStyle = PAPER;
+  ctx.fillRect(0, 0, w, h);
+
+  const step = Math.max(8, S * 0.11);
+  ctx.strokeStyle = RULE;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let y = step * 1.5; y < h; y += step) {
+    ctx.moveTo(0, y);
+    ctx.lineTo(w, y);
+  }
+  ctx.stroke();
+
+  const marginX = Math.max(10, w * 0.13);
+  ctx.strokeStyle = MARGIN_RED;
+  ctx.lineWidth = Math.max(1, S * 0.006);
+  ctx.beginPath();
+  ctx.moveTo(marginX, 0);
+  ctx.lineTo(marginX, h);
+  ctx.stroke();
+
+  if (h > 60) {
+    const holes = Math.max(2, Math.floor(h / (S * 0.3)));
+    ctx.fillStyle = 'rgba(0,0,0,0.14)';
+    for (let i = 0; i < holes; i++) {
+      const cy = ((i + 0.5) / holes) * h;
+      ctx.beginPath();
+      ctx.arc(marginX * 0.45, cy, Math.max(1.6, S * 0.022), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  if (mid) {
+    const pad = Math.max(4, S * 0.05);
+    const left = marginX + pad;
+    const innerW = w - left - pad;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = INK;
+    const t = big ? Math.min(S * 0.14, innerW * 0.15) : Math.min(S * 0.17, w * 0.13);
+    ctx.font = caseFont(t);
+    let y = pad + t * 1.2;
+    for (const ln of wrap(ctx, spec.title, innerW, big ? 2 : 1)) {
+      ctx.fillText(ln, left, y);
+      y += t * 1.15;
+    }
+    if (big && spec.tagline) {
+      ctx.fillStyle = 'rgba(32,33,29,0.68)';
+      const ts = Math.max(9, Math.min(S * 0.058, innerW * 0.058));
+      ctx.font = bodyFont(ts);
+      y += S * 0.015;
+      for (const ln of wrap(ctx, spec.tagline, innerW, 3)) {
+        y += ts * 1.3;
+        ctx.fillText(ln, left, y);
+      }
+    }
+    ctx.fillStyle = RED;
+    ctx.font = caseFont(big ? Math.min(S * 0.14, innerW * 0.2) : Math.min(S * 0.17, w * 0.15));
+    ctx.fillText(money(spec.bid), left, h - pad);
+  }
+}
