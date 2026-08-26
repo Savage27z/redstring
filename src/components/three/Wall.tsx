@@ -60,3 +60,51 @@ function corkTexture(): THREE.CanvasTexture {
   tex.wrapT = THREE.RepeatWrapping;
   return tex;
 }
+
+function woodTexture(): THREE.CanvasTexture {
+  const W = 1024;
+  const H = 128;
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = H;
+  const ctx = c.getContext('2d')!;
+
+  ctx.fillStyle = '#b07a3c';
+  ctx.fillRect(0, 0, W, H);
+
+  // long grain running with the rail
+  for (let i = 0; i < 190; i++) {
+    const y = Math.random() * H;
+    const amp = 1 + Math.random() * 4;
+    const dark = Math.random() > 0.5;
+    ctx.strokeStyle = dark
+      ? 'rgba(108,66,26,' + (0.1 + Math.random() * 0.34) + ')'
+      : 'rgba(220,175,116,' + (0.08 + Math.random() * 0.26) + ')';
+    ctx.lineWidth = 0.6 + Math.random() * 2.2;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    for (let x = 0; x <= W; x += 24) {
+      ctx.lineTo(x, y + Math.sin(x * 0.018 + i) * amp);
+    }
+    ctx.stroke();
+  }
+
+  // a couple of knots
+  for (let i = 0; i < 3; i++) {
+    const kx = Math.random() * W;
+    const ky = Math.random() * H;
+    for (let r = 16; r > 0; r -= 2.4) {
+      ctx.strokeStyle = 'rgba(96,58,22,' + (0.05 + r / 150) + ')';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.ellipse(kx, ky, r, r * 0.42, 0.3, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
