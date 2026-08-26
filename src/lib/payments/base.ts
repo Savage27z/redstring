@@ -1,49 +1,44 @@
-import {
-  createPublicClient,
-  http,
-  parseAbiItem,
-  decodeEventLog,
-  getAddress,
-  encodeFunctionData,
-} from 'viem';
+import { createPublicClient, http, parseAbiItem, decodeEventLog, getAddress } from 'viem';
 import type { ChainConfig } from './chains';
 
 /**
  * Base (EVM) settlement.
  *
  * EVM has no Solana Pay equivalent — no reference field that lets the server
- * find an arbitrary payment on its own — so the payer's wallet reports the
- * transaction hash and the server verifies it. Verification is what matters,
- * and it is strict: the transaction must be mined and successful, must touch
- * the real USDC contract, and must carry a Transfer event of at least the
- * requested amount to our address. A hash for someone else's payment, a
- * different token, or a short payment all fail.
+ * find an arbitrary payment on its own — so the payer reports the transaction
+ * hash and the server verifies it.
+ *
+ * Deliberately NO wallet connection. The site never asks to connect, never
+ * sees an address, and cannot prompt for a signature: the payer sends USDC from
+ * whatever wallet or exchange they already trust and pastes the hash. That
+ * costs a step, and buys not having to ask a stranger to attach their wallet to
+ * a site they just found.
+ *
+ * Verification is what matters, and it is strict: the transaction must be mined
+ * and successful, must touch the real USDC contract, and must carry a Transfer
+ * event of at least the requested amount to our address. A hash for someone
+ * else's payment, a different token, or a short payment all fail.
  */
 
 const TRANSFER_EVENT = parseAbiItem(
   'event Transfer(address indexed from, address indexed to, uint256 value)',
 );
 
-const ERC20_TRANSFER_ABI = [
-  {
-    name: 'transfer',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'to', type: 'address' },
-      { name: 'amount', type: 'uint256' },
-    ],
-    outputs: [{ name: '', type: 'bool' }],
-  },
-] as const;
-
-/** Calldata the browser wallet signs. Built server-side so the amount is ours. */
-export function encodeUsdcTransfer(recipient: string, amountUnits: bigint): string {
-  return encodeFunctionData({
-    abi: ERC20_TRANSFER_ABI,
-    functionName: 'transfer',
-    args: [getAddress(recipient), amountUnits],
-  });
+/**
+ * EIP-681 payment URI, for a QR a mobile wallet can scan.
+ *
+ * Same shape as the Solana QR: it describes a payment, it does not connect
+ * anything. Wallets that don't understand it simply won't scan, and the payer
+ * falls back to copying the address.
+ */
+export function buildPaymentUri(
+  config: ChainConfig,
+  chainId: number,
+  amountUnits: bigint,
+): string {
+  const token = getAddress(config.usdc);
+  const recipient = getAddress(config.recipient);
+  return `ethereum:${token}@${chainId}/transfer?address=${recipient}&uint256=${amountUnits.toString()}`;
 }
 
 export interface BaseVerifyResult {

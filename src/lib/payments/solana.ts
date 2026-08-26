@@ -12,8 +12,15 @@ import type { ChainConfig } from './chains';
  * recipient, mint and amount against what we asked for, so a payment for the
  * wrong amount or to the wrong address cannot settle a bid.
  *
- * No wallet library ships to the browser for this — the client only renders a
- * URL as a QR code and polls.
+ * Deliberately a TRANSFER request, not a transaction request.
+ *
+ * A transaction request produces a much shorter QR, but it works by the wallet
+ * POSTing the payer's account to this server to fetch a transaction — which
+ * wallets present as "connect to this site". A transfer request carries the
+ * recipient, amount and mint in the URL itself, so the wallet builds the send
+ * locally and shows a plain confirmation. Nothing connects, the site never
+ * learns an address, and no wallet library ships to the browser. The longer QR
+ * is the price of that, and it is worth paying.
  */
 
 export interface SolanaPaymentRequest {
@@ -22,28 +29,22 @@ export interface SolanaPaymentRequest {
   reference: string;
 }
 
-/**
- * Builds a *transaction request* URL rather than a transfer request.
- *
- * A transfer request has to carry recipient, amount, mint and reference as
- * query parameters, which makes for a long, dense QR full of opaque base58.
- * A transaction request carries one short link: the wallet calls it, and the
- * server returns a transaction with all of that fixed server-side. Same
- * guarantees, a fraction of the QR.
- */
 export function createSolanaRequest(
-  origin: string,
-  intentId: string,
-  reference: string,
+  config: ChainConfig,
+  amountDollars: number,
 ): SolanaPaymentRequest {
-  const link = new URL(`${origin}/api/pay/${intentId}`);
-  const url = encodeURL({ link });
-  return { url: url.toString(), reference };
-}
+  const reference = Keypair.generate().publicKey;
 
-/** Reference key for a new payment; stamped into the transfer we build later. */
-export function newReference(): string {
-  return Keypair.generate().publicKey.toBase58();
+  // `label` and `message` are omitted on purpose: they are decoration, and they
+  // were the longest part of the URL. Everything left is load-bearing.
+  const url = encodeURL({
+    recipient: new PublicKey(config.recipient),
+    amount: new BigNumber(amountDollars),
+    splToken: new PublicKey(config.usdc),
+    reference,
+  });
+
+  return { url: url.toString(), reference: reference.toBase58() };
 }
 
 export interface SolanaVerifyResult {

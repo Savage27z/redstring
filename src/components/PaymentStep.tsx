@@ -5,13 +5,19 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 /**
  * The pay-with-USDC step.
  *
- * Solana needs nothing from the browser but a QR code: the payment carries a
- * reference key, and the server finds and verifies it on chain. Base has no
- * equivalent, so the injected wallet sends calldata the server built and hands
- * back a transaction hash for the server to verify.
+ * There is deliberately NO wallet connection anywhere in this flow. The site
+ * never asks to connect, never learns the payer's address, and cannot prompt
+ * for a signature — asking a stranger to attach their wallet to a site they
+ * just found is a bigger ask than the bid itself.
  *
- * Either way the browser never decides that a payment happened — it polls, and
- * the server confirms against the chain.
+ * Solana shows a Solana Pay *transfer* request: the wallet reads the amount and
+ * mint from the QR, builds the send locally, and shows a plain confirmation.
+ * (A transaction request would make a shorter QR, but the wallet has to hand
+ * its account to the server for one, which wallets present as "connect".)
+ *
+ * Base has no equivalent, so the payer sends from whatever wallet or exchange
+ * they already use and pastes the transaction hash. The server verifies it
+ * against the chain either way — the browser never decides a payment happened.
  */
 
 export interface PaymentIntentView {
@@ -28,11 +34,7 @@ export interface PaymentIntentView {
 export interface PaymentPayload {
   intent: PaymentIntentView;
   solana?: { url: string; qr: string };
-  base?: { to: string; data: string; chainIdHex: string; chainId: number };
-}
-
-interface EthereumProvider {
-  request(args: { method: string; params?: unknown[] }): Promise<unknown>;
+  base?: { uri: string; qr: string; token: string; chainId: number };
 }
 
 function money(n: number): string {
@@ -41,6 +43,35 @@ function money(n: number): string {
 
 const label =
   'mb-1.5 block font-[family-name:var(--font-case)] text-[10px] uppercase tracking-[0.2em] text-[color:var(--color-ink-faint)]';
+
+function Copyable({ value, title }: { value: string; title: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div>
+      <span className={label}>{title}</span>
+      <button
+        type="button"
+        onClick={() => {
+          navigator.clipboard?.writeText(value).then(
+            () => {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1600);
+            },
+            () => {
+              /* clipboard blocked; the text is selectable anyway */
+            },
+          );
+        }}
+        className="flex w-full items-center gap-2 bg-[rgba(0,0,0,0.06)] p-2 text-left ring-1 ring-inset ring-[rgba(90,66,36,0.35)] transition-colors hover:bg-[rgba(0,0,0,0.1)]"
+      >
+        <code className="min-w-0 flex-1 break-all text-[11px] leading-snug">{value}</code>
+        <span className="shrink-0 font-[family-name:var(--font-case)] text-[10px] uppercase tracking-[0.14em] text-[color:var(--color-string)]">
+          {copied ? 'Copied' : 'Copy'}
+        </span>
+      </button>
+    </div>
+  );
+}
 
 export default function PaymentStep({
   payload,
@@ -53,8 +84,8 @@ export default function PaymentStep({
 }) {
   const [status, setStatus] = useState(payload.intent.status);
   const [error, setError] = useState<string | null>(payload.intent.error ?? null);
-  const [walletBusy, setWalletBusy] = useState(false);
   const [manualHash, setManualHash] = useState('');
+  const [checking, setChecking] = useState(false);
   const settled = useRef(false);
 
   const finish = useCallback(() => {
@@ -89,58 +120,31 @@ export default function PaymentStep({
     };
   }, [payload.intent.id, finish]);
 
-  /* ---- Base: send via the injected wallet ------------------------------ */
-  async function payWithWallet() {
-    const eth = (window as unknown as { ethereum?: EthereumProvider }).ethereum;
-    if (!eth || !payload.base) {
-      setError('No browser wallet found. Install MetaMask, or send the USDC manually.');
-      return;
-    }
-
-    setWalletBusy(true);
+  async function submitHash(txHash: string) {
+    if (!txHash) return;
+    setChecking(true);
     setError(null);
     try {
-      const accounts = (await eth.request({ method: 'eth_requestAccounts' })) as string[];
-      const from = accounts?.[0];
-      if (!from) throw new Error('No account available.');
-
-      // Wrong network is the most common failure; offer to switch rather than
-      // letting the transfer go out on the wrong chain.
-      try {
-        await eth.request({
-          method: 'wallet_switchEthereumChain',
-          params: [{ chainId: payload.base.chainIdHex }],
-        });
-      } catch {
-        throw new Error(`Switch your wallet to Base (chain ${payload.base.chainId}) and retry.`);
-      }
-
-      const txHash = (await eth.request({
-        method: 'eth_sendTransaction',
-        params: [{ from, to: payload.base.to, data: payload.base.data, value: '0x0' }],
-      })) as string;
-
-      await submitHash(txHash);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'The wallet rejected that transaction.');
+      const res = await fetch(`/api/payments/${payload.intent.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ txHash }),
+      });
+      const data = await res.json();
+      if (data.intent?.status) setStatus(data.intent.status);
+      if (data.error) setError(data.error);
+      if (data.intent?.status === 'confirmed') finish();
+      else if (!data.error) setError('Not confirmed yet — this will settle as soon as it is.');
+    } catch {
+      setError('Could not reach the server. Try again.');
     } finally {
-      setWalletBusy(false);
+      setChecking(false);
     }
-  }
-
-  async function submitHash(txHash: string) {
-    const res = await fetch(`/api/payments/${payload.intent.id}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ txHash }),
-    });
-    const data = await res.json();
-    if (data.intent?.status) setStatus(data.intent.status);
-    if (data.error) setError(data.error);
-    if (data.intent?.status === 'confirmed') finish();
   }
 
   const isSolana = payload.intent.chain === 'solana';
+  const qr = isSolana ? payload.solana?.qr : payload.base?.qr;
+  const uri = isSolana ? payload.solana?.url : payload.base?.uri;
   const done = status === 'confirmed';
 
   return (
@@ -150,75 +154,65 @@ export default function PaymentStep({
         <span className="font-[family-name:var(--font-case)] text-[color:var(--color-string)]">
           {money(payload.intent.amount)} USDC
         </span>{' '}
-        on {isSolana ? 'Solana' : 'Base'}. The board updates the moment the transfer confirms
-        on chain.
+        on {isSolana ? 'Solana' : 'Base'} from any wallet. The board updates the moment the
+        transfer confirms on chain.
       </p>
 
-      {isSolana && payload.solana && (
+      {qr && (
         <div className="mt-4 flex flex-col items-center gap-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={payload.solana.qr}
-            alt="Solana Pay QR code"
-            className="h-48 w-48 border-2 border-[rgba(90,66,36,0.4)] bg-white p-1"
+            src={qr}
+            alt={`Payment QR for ${money(payload.intent.amount)} USDC`}
+            className="h-44 w-44 border-2 border-[rgba(90,66,36,0.4)] bg-white p-1"
           />
-          <a
-            href={payload.solana.url}
-            className="px-4 py-2 font-[family-name:var(--font-case)] text-[12px] uppercase tracking-[0.14em] text-[color:var(--color-paper)]"
-            style={{ background: 'var(--color-string)' }}
-          >
-            Open in wallet
-          </a>
+          {uri && (
+            <a
+              href={uri}
+              className="px-4 py-2 font-[family-name:var(--font-case)] text-[12px] uppercase tracking-[0.14em] text-[color:var(--color-paper)]"
+              style={{ background: 'var(--color-string)' }}
+            >
+              Open in wallet
+            </a>
+          )}
           <p className="text-center text-[11px] text-[color:var(--color-ink-faint)]">
-            Scan with Phantom or Solflare, or tap to open on this device.
+            {isSolana
+              ? 'Scan with Phantom or Solflare. No wallet connection — it just sends.'
+              : 'Scan with your wallet, or copy the details below.'}
           </p>
         </div>
       )}
 
-      {!isSolana && payload.base && (
-        <div className="mt-4 space-y-3">
-          <button
-            type="button"
-            onClick={payWithWallet}
-            disabled={walletBusy || done}
-            className="w-full px-4 py-3 font-[family-name:var(--font-case)] text-[13px] uppercase tracking-[0.14em] text-[color:var(--color-paper)] shadow-[0_4px_0_#7d0d13] transition-transform active:translate-y-[2px] disabled:opacity-60"
-            style={{ background: 'var(--color-string)' }}
-          >
-            {walletBusy ? 'Check your wallet…' : `Pay ${money(payload.intent.amount)} USDC`}
-          </button>
+      {/* Manual details. On Base this is the primary path, because EVM wallets
+          cannot report the payment back to us on their own. */}
+      <div className="mt-5 space-y-3 border-t border-[rgba(90,66,36,0.3)] pt-4">
+        <Copyable value={payload.intent.recipient} title="Send USDC to" />
+        {!isSolana && payload.base && (
+          <Copyable value={payload.base.token} title="USDC contract (Base)" />
+        )}
 
-          <details className="text-[12px] text-[color:var(--color-ink-soft)]">
-            <summary className="cursor-pointer font-[family-name:var(--font-case)] text-[11px] uppercase tracking-[0.14em]">
-              Paid another way?
-            </summary>
-            <div className="mt-2 space-y-2">
-              <div>
-                <span className={label}>Send USDC to</span>
-                <code className="block break-all rounded bg-[rgba(0,0,0,0.06)] p-2 text-[11px]">
-                  {payload.intent.recipient}
-                </code>
-              </div>
-              <div>
-                <span className={label}>Then paste the transaction hash</span>
-                <input
-                  value={manualHash}
-                  onChange={(e) => setManualHash(e.target.value)}
-                  placeholder="0x…"
-                  className="w-full bg-[rgba(255,255,255,0.42)] px-3 py-2 text-[13px] outline-none ring-1 ring-inset ring-[rgba(90,66,36,0.4)] focus:ring-2 focus:ring-[color:var(--color-string)]"
-                />
-                <button
-                  type="button"
-                  onClick={() => submitHash(manualHash.trim())}
-                  disabled={!manualHash.trim()}
-                  className="mt-2 px-3 py-2 font-[family-name:var(--font-case)] text-[11px] uppercase tracking-[0.14em] text-[color:var(--color-ink-soft)] ring-1 ring-inset ring-[rgba(90,66,36,0.45)] disabled:opacity-50"
-                >
-                  Verify payment
-                </button>
-              </div>
-            </div>
-          </details>
-        </div>
-      )}
+        {!isSolana && (
+          <div>
+            <span className={label}>Then paste the transaction hash</span>
+            <input
+              value={manualHash}
+              onChange={(e) => setManualHash(e.target.value)}
+              placeholder="0x…"
+              spellCheck={false}
+              className="w-full bg-[rgba(255,255,255,0.42)] px-3 py-2 font-[family-name:var(--font-case)] text-[12px] outline-none ring-1 ring-inset ring-[rgba(90,66,36,0.4)] focus:ring-2 focus:ring-[color:var(--color-string)]"
+            />
+            <button
+              type="button"
+              onClick={() => submitHash(manualHash.trim())}
+              disabled={!manualHash.trim() || checking || done}
+              className="mt-2 w-full px-3 py-2.5 font-[family-name:var(--font-case)] text-[12px] uppercase tracking-[0.14em] text-[color:var(--color-paper)] shadow-[0_3px_0_#7d0d13] transition-transform active:translate-y-[2px] disabled:opacity-50"
+              style={{ background: 'var(--color-string)' }}
+            >
+              {checking ? 'Checking the chain…' : 'Verify payment'}
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* status */}
       <div className="mt-5 border-t border-[rgba(90,66,36,0.3)] pt-4">

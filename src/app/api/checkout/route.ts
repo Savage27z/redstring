@@ -5,8 +5,8 @@ import { MIN_BID, priceToBeat } from '@/lib/types';
 import { rateLimit, clientKey } from '@/lib/rateLimit';
 import { chainConfig, enabledChains, toUsdcUnits, baseNumericChainId } from '@/lib/payments/chains';
 import { createIntent, publicIntent } from '@/lib/payments/intents';
-import { createSolanaRequest, newReference } from '@/lib/payments/solana';
-import { encodeUsdcTransfer } from '@/lib/payments/base';
+import { createSolanaRequest } from '@/lib/payments/solana';
+import { buildPaymentUri } from '@/lib/payments/base';
 import { validateAmount, validateNewCase, normalizeBidderName } from '@/lib/validation';
 import type { ChainId } from '@/lib/payments/chains';
 
@@ -90,23 +90,20 @@ export async function POST(req: Request) {
   }
 
   const amountUnits = toUsdcUnits(amount.value);
-  const origin =
-    process.env.NEXT_PUBLIC_SITE_URL || req.headers.get('origin') || 'http://localhost:3000';
 
   try {
     if (chain === 'solana') {
-      // The intent has to exist before the URL, because the URL points at it.
+      const request = createSolanaRequest(config, amount.value);
       const intent = createIntent({
         chain,
         amount: amount.value,
         amountUnits: amountUnits.toString(),
         recipient: config.recipient,
-        reference: newReference(),
+        reference: request.reference,
         submissionId,
         bidderName,
         newCase,
       });
-      const request = createSolanaRequest(origin, intent.id, intent.reference!);
 
       return NextResponse.json({
         intent: publicIntent(intent),
@@ -128,14 +125,17 @@ export async function POST(req: Request) {
       newCase,
     });
 
+    // A payment URI and a QR — never calldata, because nothing on this page
+    // will ask a wallet to connect or sign. The payer sends from wherever they
+    // already trust and reports the transaction hash.
+    const uri = buildPaymentUri(config, baseNumericChainId(), amountUnits);
+
     return NextResponse.json({
       intent: publicIntent(intent),
       base: {
-        // The wallet signs calldata we built, so the amount is not the
-        // browser's to decide.
-        to: config.usdc,
-        data: encodeUsdcTransfer(config.recipient, amountUnits),
-        chainIdHex: `0x${baseNumericChainId().toString(16)}`,
+        uri,
+        qr: await QRCode.toDataURL(uri, { margin: 1, width: 512 }),
+        token: config.usdc,
         chainId: baseNumericChainId(),
       },
     });

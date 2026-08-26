@@ -149,11 +149,21 @@ console.log('\n--- crypto payment rails');
       );
 
       if (c.id === 'solana') {
-        check('solana: returns a solana: URL', !!r.json?.solana?.url?.startsWith('solana:'));
+        const url = r.json?.solana?.url ?? '';
+        check('solana: returns a solana: URL', url.startsWith('solana:'));
         check('solana: returns a QR image', !!r.json?.solana?.qr?.startsWith('data:image/'));
+        // A transfer request carries the amount and mint itself. A transaction
+        // request (solana:https://...) would make the wallet ask to connect.
+        check('solana: is a transfer request, not a connect-style link', !url.includes('http'));
+        check('solana: pins the amount', url.includes('amount='));
+        check('solana: pins the USDC mint', url.includes('spl-token='));
+        check('solana: carries a reference for matching', url.includes('reference='));
       } else {
-        check('base: returns ERC-20 transfer calldata', !!r.json?.base?.data?.startsWith('0xa9059cbb'));
+        const uri = r.json?.base?.uri ?? '';
+        check('base: returns an EIP-681 payment URI', uri.startsWith('ethereum:'));
+        check('base: returns a QR image', !!r.json?.base?.qr?.startsWith('data:image/'));
         check('base: pins the chain id', typeof r.json?.base?.chainId === 'number');
+        check('base: sends no signable calldata', r.json?.base?.data === undefined);
       }
 
       const id = r.json?.intent?.id;
