@@ -60,3 +60,55 @@ interface Props {
   /** y of the floor */
   floorY: number;
 }
+
+export default function Easel({ boardW, boardH, bottomY, floorY }: Props) {
+  const wood = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: '#8f5f2e',
+        roughness: 0.68,
+        metalness: 0.03,
+      }),
+    [],
+  );
+
+  const r = Math.min(boardW, boardH) * 0.016;
+  const legTop = bottomY + boardH * 0.06;
+  const spanX = boardW * 0.34;
+  const splay = boardW * 0.1;
+  const drop = floorY + r; // rest the feet on the floor
+
+  return (
+    <group>
+      {/* front legs, splaying outward and forward as they descend */}
+      <Strut
+        from={[-spanX, legTop, 0]}
+        to={[-spanX - splay, drop, 0.22]}
+        radius={r}
+        material={wood}
+      />
+      <Strut
+        from={[spanX, legTop, 0]}
+        to={[spanX + splay, drop, 0.22]}
+        radius={r}
+        material={wood}
+      />
+
+      {/* rear kickstand */}
+      <Strut from={[0, legTop, -0.02]} to={[0, drop, -0.62]} radius={r * 0.92} material={wood} />
+
+      {/* cross brace between the front legs */}
+      <Strut
+        from={[-spanX - splay * 0.55, drop + (legTop - drop) * 0.36, 0.13]}
+        to={[spanX + splay * 0.55, drop + (legTop - drop) * 0.36, 0.13]}
+        radius={r * 0.7}
+        material={wood}
+      />
+
+      {/* tray lip the board sits in */}
+      <mesh position={[0, bottomY - r * 1.2, 0.07]} material={wood} castShadow receiveShadow>
+        <boxGeometry args={[boardW * 0.82, r * 2.2, 0.16]} />
+      </mesh>
+    </group>
+  );
+}
