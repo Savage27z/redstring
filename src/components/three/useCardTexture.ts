@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { drawCard, stockForRank } from '@/lib/cardTexture';
 import type { Submission } from '@/lib/types';
@@ -40,12 +40,7 @@ export function useCardTexture(
     fontsReady ? 'f' : '-',
   ].join('|');
 
-  const [, force] = useState(0);
-  useEffect(() => {
-    if (fontsReady) force((n) => n + 1);
-  }, [fontsReady]);
-
-  return useMemo(() => {
+  const texture = useMemo(() => {
     if (typeof document === 'undefined') return null;
     const canvas = drawCard(
       {
@@ -67,6 +62,29 @@ export function useCardTexture(
     return tex;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
+
+  /**
+   * Textures created outside the r3f element tree are not auto-disposed, and a
+   * card gets a new one on every bid that changes its size bucket. Without this
+   * the GPU accumulates a fresh 1024x1024 RGBA texture per card per bid, which
+   * on a live board grows without bound.
+   */
+  const previous = useRef<THREE.CanvasTexture | null>(null);
+  useEffect(() => {
+    const stale = previous.current;
+    previous.current = texture;
+    if (stale && stale !== texture) stale.dispose();
+  }, [texture]);
+
+  useEffect(
+    () => () => {
+      previous.current?.dispose();
+      previous.current = null;
+    },
+    [],
+  );
+
+  return texture;
 }
 
 /** Resolves once the webfonts are actually available to canvas 2D. */
@@ -74,13 +92,16 @@ export function useFontsReady(): boolean {
   const [ready, setReady] = useState(false);
   useEffect(() => {
     let alive = true;
-    if (typeof document === 'undefined' || !('fonts' in document)) {
-      setReady(true);
-      return;
-    }
-    document.fonts.ready.then(() => {
+    const done = () => {
       if (alive) setReady(true);
-    });
+    };
+    // Always resolve through a microtask: setting state synchronously inside an
+    // effect body triggers a cascading render.
+    if (typeof document === 'undefined' || !('fonts' in document)) {
+      Promise.resolve().then(done);
+    } else {
+      document.fonts.ready.then(done);
+    }
     return () => {
       alive = false;
     };

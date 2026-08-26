@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 
 /**
@@ -136,6 +136,16 @@ export default function Wall({ width, height, frame }: Props) {
     if (wood) m.map = wood;
     return m;
   }, [wood]);
+
+  // Built by hand rather than declared as JSX, so r3f will not dispose them.
+  useEffect(
+    () => () => {
+      cork?.dispose();
+      wood?.dispose();
+      woodMat.dispose();
+    },
+    [cork, wood, woodMat],
+  );
 
   const depth = frame * 0.62;
   const outerW = width + frame * 2;
