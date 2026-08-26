@@ -68,3 +68,22 @@ export function useCardTexture(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 }
+
+/** Resolves once the webfonts are actually available to canvas 2D. */
+export function useFontsReady(): boolean {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    if (typeof document === 'undefined' || !('fonts' in document)) {
+      setReady(true);
+      return;
+    }
+    document.fonts.ready.then(() => {
+      if (alive) setReady(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return ready;
+}
