@@ -50,3 +50,11 @@ function fontVar(name: string, fallback: string): string {
   const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   return v ? v + ', ' + fallback : fallback;
 }
+
+function caseFont(size: number): string {
+  return Math.round(size) + 'px ' + fontVar('--font-special-elite', 'Courier New, monospace');
+}
+
+function bodyFont(size: number, weight = 400): string {
+  return weight + ' ' + Math.round(size) + 'px ' + fontVar('--font-archivo', 'system-ui, sans-serif');
+}
