@@ -116,3 +116,9 @@ Type is **Special Elite** (case notes, stamps, figures) against **Archivo**
 
 Reduced motion is honored: the reflow snaps instead of tweening, the pin-drop
 and camera parallax are disabled, and DOM transitions collapse to 120ms.
+
+## Not built yet
+
+- **Crypto escrow** (USDC auto-refund for outbid parties) — v2, flagged as such.
+- **Logo upload.** The field exists in the schema and the card renders a logo
+  slot; the upload path is not wired.
