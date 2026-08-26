@@ -37,3 +37,18 @@ const FILL = 0.54;
  * a readable card instead of a speck.
  */
 const GAMMA = 0.62;
+
+/** Deterministic [0,1) hash — same id always lands the same way. */
+function rand(seed: number): number {
+  const x = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+function hashId(id: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < id.length; i++) {
+    h ^= id.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return Math.abs(h % 100000);
+}
