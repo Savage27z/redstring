@@ -6,15 +6,15 @@
  *
  * Covers the things unit tests cannot reach: that oversized or malformed input
  * is rejected BEFORE a Checkout session exists, that rate limiting engages, and
- * that a replayed Stripe webhook does not apply the same bid twice.
+ * that a replayed Polar webhook does not apply the same bid twice.
  *
- * The webhook signature is computed locally with the same HMAC scheme Stripe
- * uses, so this exercises the real verification path with no network calls.
+ * Webhook payloads are signed locally with the same Standard Webhooks library
+ * that Polar's SDK verifies with, so this exercises the real verification path.
  */
 import crypto from 'node:crypto';
 
 const BASE = process.env.SMOKE_BASE ?? 'http://localhost:3000';
-const WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET ?? '';
+const WEBHOOK_SECRET = process.env.POLAR_WEBHOOK_SECRET ?? '';
 
 let failures = 0;
 const check = (name, cond, extra = '') => {
@@ -114,9 +114,9 @@ console.log(`--- validation (${BASE})`);
       after.submissions.some((s) => s.title === 'Valid Entry' && s.url.startsWith('https://')),
     );
   } else {
-    console.log('skip  valid-submission tests (Stripe configured, so checkout defers to Stripe)');
+    console.log('skip  valid-submission tests (Polar configured, so checkout defers to Polar)');
     check(
-      'valid submission does NOT bypass payment when Stripe is configured',
+      'valid submission does NOT bypass payment when Polar is configured',
       after.submissions.length === before.submissions.length,
       'a bid landed without payment',
     );
@@ -139,49 +139,58 @@ console.log('\n--- rate limiting');
 
 console.log('\n--- webhook idempotency');
 if (!WEBHOOK_SECRET) {
-  console.log('skip  STRIPE_WEBHOOK_SECRET not set (run the server with dummy Stripe env)');
+  console.log('skip  POLAR_WEBHOOK_SECRET not set (run the server with dummy Polar env)');
 } else {
-  const sessionId = 'cs_test_' + crypto.randomBytes(8).toString('hex');
+  // Signed with the same Standard Webhooks library Polar's SDK verifies with,
+  // so this drives the real verification path without touching the network.
+  const { Webhook } = await import('standardwebhooks');
+  const wh = new Webhook(Buffer.from(WEBHOOK_SECRET).toString('base64'));
+
+  const orderId = 'ord_' + crypto.randomBytes(8).toString('hex');
   const event = {
-    id: 'evt_' + crypto.randomBytes(8).toString('hex'),
-    object: 'event',
-    type: 'checkout.session.completed',
+    type: 'order.paid',
     data: {
-      object: {
-        id: sessionId,
-        object: 'checkout.session',
-        amount_total: 4200,
-        metadata: {
-          submissionId: '',
-          amount: '42',
-          bidderName: 'webhook-tester',
-          newCase: JSON.stringify(newCase({ title: 'Webhook Entry' })),
-        },
+      id: orderId,
+      status: 'paid',
+      paid: true,
+      currency: 'usd',
+      net_amount: 4200,
+      total_amount: 4200,
+      billing_name: null,
+      customer_id: 'cus_smoketest',
+      checkout_id: 'chk_smoketest',
+      customer: { id: 'cus_smoketest', email: 'buyer@example.com' },
+      metadata: {
+        submissionId: '',
+        amount: 42,
+        bidderName: 'webhook-tester',
+        newCase: JSON.stringify(newCase({ title: 'Webhook Entry' })),
       },
     },
   };
 
   const payload = JSON.stringify(event);
-  const ts = Math.floor(Date.now() / 1000);
-  const sig = crypto
-    .createHmac('sha256', WEBHOOK_SECRET)
-    .update(`${ts}.${payload}`)
-    .digest('hex');
+  const msgId = 'msg_' + crypto.randomBytes(8).toString('hex');
+  const timestamp = new Date();
 
-  const send = () =>
-    fetch(BASE + '/api/webhooks/stripe', {
+  const send = (signature) =>
+    fetch(BASE + '/api/webhooks/polar', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'stripe-signature': `t=${ts},v1=${sig}`,
+        'webhook-id': msgId,
+        'webhook-timestamp': Math.floor(timestamp.getTime() / 1000).toString(),
+        'webhook-signature': signature,
       },
       body: payload,
     }).then(async (r) => ({ status: r.status, json: await r.json().catch(() => null) }));
 
+  const goodSig = wh.sign(msgId, timestamp, payload);
+
   const before = await board();
-  const first = await send();
+  const first = await send(goodSig);
   const mid = await board();
-  const second = await send();
+  const second = await send(goodSig);
   const after = await board();
 
   check('signed webhook accepted', first.status === 200, JSON.stringify(first.json));
@@ -202,17 +211,12 @@ if (!WEBHOOK_SECRET) {
     `${mid.stats.totalRaised} -> ${after.stats.totalRaised}`,
   );
   check(
-    'amount comes from the charge, not metadata',
+    'amount comes from the order total, not metadata',
     after.submissions.some((s) => s.title === 'Webhook Entry' && s.currentBid === 42),
   );
 
-  // tampered signature must be refused
-  const bad = await fetch(BASE + '/api/webhooks/stripe', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'stripe-signature': `t=${ts},v1=deadbeef` },
-    body: payload,
-  });
-  check('forged signature rejected', bad.status === 400, `got ${bad.status}`);
+  const forged = await send('v1,' + Buffer.from('nope').toString('base64'));
+  check('forged signature rejected', forged.status === 403, `got ${forged.status}`);
 }
 
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURES`);

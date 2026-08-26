@@ -47,7 +47,12 @@ export default tseslint.config(
   {
     files: ['scripts/**/*.mjs', 'scatter.test.mjs'],
     languageOptions: {
-      globals: { process: 'readonly', console: 'readonly', fetch: 'readonly' },
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+        fetch: 'readonly',
+        Buffer: 'readonly',
+      },
     },
   },
 );
