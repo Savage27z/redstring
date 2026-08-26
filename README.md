@@ -55,7 +55,7 @@ genuinely unordered, and stable at 60 cards.
 | Storage adapters | `src/lib/db/` | `memory.ts` (default), `postgres.ts` |
 | Rate limiting | `src/lib/rateLimit.ts` | In-process fixed window |
 | Realtime | `src/app/api/stream/route.ts` | SSE + polling fallback |
-| Payment | `src/lib/payments.ts` | Polar (merchant of record); dev mode without keys |
+| Payment | `src/lib/payments/` | USDC on Solana + Base; dev mode with no chain set |
 
 ### Three decisions worth knowing
 
@@ -78,30 +78,34 @@ to #1.
 
 ## Going to production
 
-1. **Payments (Polar).** Polar is the merchant of record, which is what makes
-   this workable from Nigeria where Stripe is unavailable. Set
-   `POLAR_ACCESS_TOKEN`, `POLAR_PRODUCT_ID` and `POLAR_WEBHOOK_SECRET`;
-   checkout refuses to run in production without them, and `POLAR_SERVER`
-   defaults to `sandbox` so going live is deliberate.
+1. **Payments (USDC).** Bids settle in USDC on **Solana**, **Base**, or both.
+   USDC is a dollar stablecoin, so a $12 bid is 12 USDC — no price oracle and no
+   volatility window. Set `SOLANA_RECIPIENT` and/or `BASE_RECIPIENT` to the
+   wallets that should receive funds; a rail stays off until its address is set.
+   `CRYPTO_NETWORK` defaults to `testnet` (Solana devnet, Base Sepolia), so
+   taking real money is a deliberate act.
 
-   Create exactly **one** product in Polar. Its catalog price never applies:
-   each checkout attaches a one-off fixed price equal to that bid, so the buyer
-   cannot edit the amount (which pay-what-you-want pricing would allow).
+   Nothing reaches the board until the chain confirms:
 
-   Point a webhook at `/api/webhooks/polar` subscribed to `order.paid`. That is
-   the *only* thing that mutates the board — the success URL is not proof of
-   payment, anyone can type it. The handler is idempotent on the Polar order id,
-   so retries and duplicate deliveries cannot apply the same bid twice, and the
-   amount credited comes from the order total rather than metadata.
+   - `POST /api/checkout` validates the bid, fixes the price server-side, and
+     opens a *payment intent*. No submission is created yet.
+   - **Solana** uses Solana Pay. The request carries a throwaway `reference`
+     public key, so the server finds and validates that exact transfer itself —
+     the payer reports nothing, and no wallet library ships to the browser. The
+     QR is rendered server-side.
+   - **Base** has no equivalent, so the injected wallet sends calldata the
+     server built and returns a transaction hash. That hash is only a hint: the
+     server re-reads the receipt and requires a `Transfer` event from the real
+     USDC contract, to our address, for at least the requested amount.
+   - The transaction signature becomes `paymentRef`, so the existing
+     idempotency applies — polling twice or replaying a hash cannot double-bid.
 
-   Signature verification is strict, but payload parsing is deliberately loose:
-   the SDK's `validateEvent` also runs the body through a generated schema for
-   the entire Order and rejects the event if any field drifts, which would mean
-   a paid order silently never reaching the board after an unrelated Polar
-   change. We verify the signature, then read only the fields we need.
+   Public RPCs are heavily rate limited and the poll loop hits them per viewer;
+   use Helius/QuickNode/Alchemy via `SOLANA_RPC_URL` / `BASE_RPC_URL` for
+   anything real.
 
-   `npm run smoke` covers all of this — it signs a real Standard Webhooks
-   payload locally and replays it.
+   `npm run smoke` covers both rails: intents open, unpaid bids never reach the
+   board, and forged transaction hashes settle nothing.
 
 2. **Persistence.** Run `schema.sql`, set `DATABASE_URL`, and the Postgres
    adapter takes over automatically — no code change. Verify the wiring with:
@@ -121,20 +125,26 @@ to #1.
    broadcasts to viewers on the same node. `src/lib/rateLimit.ts` has the same
    limitation. Behind more than one node, move both to Redis.
 
-## Adding auth
+## On accounts, and card payments
 
-`bidder_name` is client-supplied today, so anyone can bid under any name. The
-schema already carries a nullable `owner_id` on both `submissions` and
-`bid_history` for this — populate it from the session and treat `bidder_name`
-as a display label only.
+There is deliberately no signup. The board is an impulse purchase, and a signup
+wall sits directly between wanting the top slot and paying for it. On-chain, the
+transaction *is* the identity of record — `bidder_name` is only a display label
+on the card and is spoofable by design.
 
-Two things to get right:
+`schema.sql` carries a nullable `owner_id` on `submissions` and `bid_history` if
+you ever add accounts; populate it from the session and treat `bidder_name` as
+cosmetic. If you do add auth middleware, `/api/board`, `/api/stream` and
+`/api/payments/*` must stay public or the board stops working for visitors.
 
-- **Keep `/api/webhooks/polar` public.** Behind auth middleware Polar gets
-  401s and payments silently stop applying. `/api/board` and `/api/stream` must
-  stay public too, or the board won't render for logged-out visitors.
-- **Link identity to payment** with `client_reference_id` on the Checkout
-  session, so a completed payment maps back to an account.
+**Card payments** were built on Polar (merchant of record, which works from
+Nigeria where Stripe does not) and Polar's automated review rejected the model:
+paid-ranking boards are non-compliant under their AUP. The webhook handler at
+`src/app/api/webhooks/polar/route.ts` is left intact and dormant — it does
+nothing without `POLAR_WEBHOOK_SECRET`. If Polar ever approves the use case, or
+you move to another processor, restoring cards means re-adding the provider
+branch to `/api/checkout`; the store, validation and idempotency underneath are
+payment-agnostic already.
 
 ### Known gaps
 
