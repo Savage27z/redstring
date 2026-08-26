@@ -163,3 +163,36 @@ export default function CaseCard3D({
     </group>
   );
 }
+
+/**
+ * The sheet's scale is non-uniform (w != h), and a pin that inherited it would
+ * render as a squashed ellipsoid. This counter-scales by the parent's exact
+ * scale each frame, leaving the pin perfectly round at any card size.
+ */
+function PinHolder({
+  rank,
+  color,
+  groupRef,
+}: {
+  rank: number;
+  color: string;
+  groupRef: React.RefObject<THREE.Group | null>;
+}) {
+  const ref = useRef<THREE.Group>(null);
+
+  useFrame(() => {
+    const g = groupRef.current;
+    const p = ref.current;
+    if (!g || !p) return;
+    p.position.set(0, 0.5, 0); // top edge of the unit quad, before scaling
+    p.scale.set(1 / (g.scale.x || 1), 1 / (g.scale.y || 1), 1);
+  });
+
+  const scale = rank === 1 ? 1.3 : rank <= 3 ? 1.05 : 0.8;
+
+  return (
+    <group ref={ref}>
+      <Pin3D position={[0, -0.014, 0.03]} color={color} scale={scale} />
+    </group>
+  );
+}
