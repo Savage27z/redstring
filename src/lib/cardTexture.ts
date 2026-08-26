@@ -103,3 +103,15 @@ function wrap(
   }
   return lines;
 }
+
+/** Fine paper tooth, so no stock reads as a flat vector fill. */
+function grain(ctx: CanvasRenderingContext2D, W: number, H: number, amount: number) {
+  const n = Math.floor((W * H) / 30);
+  ctx.save();
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * amount;
+    ctx.fillStyle = Math.random() > 0.5 ? 'rgba(0,0,0,' + a + ')' : 'rgba(255,255,255,' + a + ')';
+    ctx.fillRect(Math.random() * W, Math.random() * H, 1.4, 1.4);
+  }
+  ctx.restore();
+}
