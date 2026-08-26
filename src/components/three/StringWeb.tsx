@@ -72,28 +72,34 @@ function buildEdges(cells: BoardCell[]): Edge[] {
   // shortest link between the web and anything still loose. Walking in rank
   // order instead (connecting #2, then #3, ...) is not the same thing — it
   // starts with long hops between far-apart cards and ends up a cat's cradle.
-  const inTree = [byRank[0]];
+  //
+  // Each node caches its distance to the tree, so adding a node only compares
+  // against the one node just added. That is the standard O(n^2) form; scanning
+  // every tree member on every step made it O(n^3), which bites in the hundreds.
   const loose = byRank.slice(1);
+  const best = loose.map((c) => ({
+    node: c,
+    dist: Math.hypot(cx(c) - cx(byRank[0]), cy(c) - cy(byRank[0])),
+    via: byRank[0],
+  }));
 
-  while (loose.length) {
-    let bestI = 0;
-    let bestP = inTree[0];
-    let bestD = Infinity;
+  while (best.length) {
+    let bi = 0;
+    for (let i = 1; i < best.length; i++) if (best[i].dist < best[bi].dist) bi = i;
 
-    for (let i = 0; i < loose.length; i++) {
-      for (const p of inTree) {
-        const d = Math.hypot(cx(loose[i]) - cx(p), cy(loose[i]) - cy(p));
-        if (d < bestD) {
-          bestD = d;
-          bestI = i;
-          bestP = p;
-        }
+    const chosen = best.splice(bi, 1)[0];
+    add(chosen.node, chosen.via, chosen.node.rank <= 3 || chosen.via.rank === 1);
+
+    for (const entry of best) {
+      const d = Math.hypot(
+        cx(entry.node) - cx(chosen.node),
+        cy(entry.node) - cy(chosen.node),
+      );
+      if (d < entry.dist) {
+        entry.dist = d;
+        entry.via = chosen.node;
       }
     }
-
-    const c = loose.splice(bestI, 1)[0];
-    add(c, bestP, c.rank <= 3 || bestP.rank === 1);
-    inTree.push(c);
   }
 
   // One deliberate long strand: the runner-up is always tied straight to #1,
