@@ -40,3 +40,16 @@ export interface BidEvent {
   /** what it displaced, for the string/annotation trail */
   previousBid: number | null;
 }
+
+export interface BoardState {
+  submissions: Submission[];
+  recentBids: BidEvent[];
+  stats: {
+    totalRaised: number;
+    totalCases: number;
+    topBid: number;
+    priceToTakeNumberOne: number;
+    minimumBid: number;
+    visitors: number;
+  };
+}
