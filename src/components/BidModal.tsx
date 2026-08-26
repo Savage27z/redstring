@@ -1,7 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Modal from './Modal';
+import PaymentStep from './PaymentStep';
+import type { PaymentPayload } from './PaymentStep';
 import { CATEGORIES, MIN_BID, priceToBeat } from '@/lib/types';
 import type { Category, Submission } from '@/lib/types';
 
@@ -44,6 +46,29 @@ export default function BidModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Set once the server opens a payment; swaps the form for the pay step.
+  const [payment, setPayment] = useState<PaymentPayload | null>(null);
+  const [chains, setChains] = useState<{ id: 'solana' | 'base'; label: string }[]>([]);
+  const [chain, setChain] = useState<'solana' | 'base' | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    fetch('/api/chains', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => {
+        if (!alive) return;
+        setChains(d.chains ?? []);
+        setChain((c) => c ?? d.chains?.[0]?.id ?? null);
+      })
+      .catch(() => {
+        /* dev mode has no chains; the form still works */
+      });
+    return () => {
+      alive = false;
+    };
+  }, [open]);
+
   // Re-seed the amount whenever the modal is opened against a new target.
   const [seenFloor, setSeenFloor] = useState(floor);
   if (open && seenFloor !== floor) {
@@ -75,6 +100,7 @@ export default function BidModal({
           submissionId: target?.id,
           amount: value,
           bidderName: bidderName.trim() || 'anon',
+          chain,
           newCase: target
             ? undefined
             : {
@@ -90,10 +116,11 @@ export default function BidModal({
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || 'Something went wrong.');
 
-      // Polar configured -> hand off to checkout. Otherwise the server already
-      // applied the bid (dev mode) and the board is about to reflow via SSE.
-      if (data.checkoutUrl) {
-        window.location.href = data.checkoutUrl;
+      // A payment was opened -> show the pay step and wait for the chain.
+      // Otherwise the server already applied the bid (dev mode) and the board
+      // is about to reflow via SSE.
+      if (data.intent) {
+        setPayment(data as PaymentPayload);
         return;
       }
 
@@ -111,6 +138,41 @@ export default function BidModal({
   }
 
   const quick = [floor, Math.ceil(floor * 1.5), floor * 2, floor * 5];
+
+  if (payment) {
+    return (
+      <Modal open={open} onClose={onClose} labelledBy="bid-title">
+        <div
+          className="paper relative border-2 border-[rgba(90,66,36,0.5)] shadow-[0_30px_60px_rgba(10,6,2,0.7)]"
+          style={{ transform: 'rotate(0.4deg)' }}
+        >
+          <div className="border-b-2 border-dashed border-[rgba(90,66,36,0.4)] p-5 pb-4">
+            <div className="font-[family-name:var(--font-case)] text-[10px] uppercase tracking-[0.24em] text-[color:var(--color-ink-faint)]">
+              Settle the claim
+            </div>
+            <h2
+              id="bid-title"
+              className="mt-1 font-[family-name:var(--font-case)] text-3xl text-[color:var(--color-ink)]"
+            >
+              Pay in USDC
+            </h2>
+          </div>
+          <PaymentStep
+            payload={payment}
+            onConfirmed={() => {
+              onSubmitted();
+              setPayment(null);
+              onClose();
+            }}
+            onCancel={() => {
+              setPayment(null);
+              onClose();
+            }}
+          />
+        </div>
+      </Modal>
+    );
+  }
 
   return (
     <Modal open={open} onClose={onClose} labelledBy="bid-title">
@@ -258,6 +320,29 @@ export default function BidModal({
           )}
         </div>
 
+        {chains.length > 1 && (
+          <div className="border-t border-[rgba(90,66,36,0.3)] px-5 pt-4">
+            <span className={label}>Pay with USDC on</span>
+            <div className="flex gap-2">
+              {chains.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setChain(c.id)}
+                  className="flex-1 px-3 py-2 font-[family-name:var(--font-case)] text-[12px] uppercase tracking-[0.12em] ring-1 ring-inset transition-colors"
+                  style={{
+                    background: chain === c.id ? 'var(--color-string)' : 'transparent',
+                    color: chain === c.id ? 'var(--color-paper)' : 'var(--color-ink-soft)',
+                    boxShadow: 'inset 0 0 0 1px rgba(90,66,36,0.45)',
+                  }}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-col gap-2 border-t border-[rgba(90,66,36,0.3)] p-5 sm:flex-row">
           <button
             type="submit"
@@ -265,7 +350,7 @@ export default function BidModal({
             className="flex-1 px-4 py-3 font-[family-name:var(--font-case)] text-[13px] uppercase tracking-[0.14em] text-[color:var(--color-paper)] shadow-[0_4px_0_#7d0d13] transition-transform active:translate-y-[2px] active:shadow-[0_2px_0_#7d0d13] disabled:opacity-60"
             style={{ background: 'var(--color-string)' }}
           >
-            {busy ? 'Pinning…' : target ? 'Take the slot' : 'Pin it to the board'}
+            {busy ? 'Opening payment…' : target ? 'Take the slot' : 'Pin it to the board'}
           </button>
           <button
             type="button"
