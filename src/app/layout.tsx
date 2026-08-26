@@ -59,3 +59,19 @@ export const metadata: Metadata = {
     ],
   },
 };
+
+export const viewport: Viewport = {
+  themeColor: '#63401f',
+  width: 'device-width',
+  initialScale: 1,
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
+  return (
+    <html lang="en" className={`${specialElite.variable} ${archivo.variable}`}>
+      <body className="antialiased">{children}</body>
+    </html>
+  );
+}
