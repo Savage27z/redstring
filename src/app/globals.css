@@ -1,0 +1,47 @@
+@import 'tailwindcss';
+
+@theme {
+  /* --- the wall (graphite, per the reference board) --------------------- */
+  --color-wall-900: #202022;
+  --color-wall-800: #2b2b2e;
+  --color-wall-700: #333336;
+  --color-wall-600: #3f3f43;
+  --color-wall-500: #56565c;
+  --color-wall-400: #6e6e75;
+
+  /* --- paper: case files, notes, tape ---------------------------------- */
+  --color-paper: #efe6d2;
+  --color-paper-dim: #ded2b8;
+  --color-paper-edge: #c9b894;
+  --color-manila: #d9c295;
+  --color-newsprint: #ded7c4;
+
+  /* --- ink -------------------------------------------------------------- */
+  --color-ink: #1c1712;
+  --color-ink-soft: #4b423a;
+  --color-ink-faint: #7d7266;
+
+  /* --- the string ------------------------------------------------------- */
+  --color-string: #b3121b;
+  --color-string-bright: #e8232f;
+  --color-string-glow: #ff4a52;
+
+  --font-case: var(--font-special-elite), 'Courier New', monospace;
+  --font-body: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-wall-800);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  overflow-x: hidden;
+}
