@@ -1,6 +1,6 @@
 /**
  * Smoke-test the database wiring: connectivity, tables, and the unique index
- * that makes Stripe webhook replays idempotent.
+ * that makes Polar webhook replays idempotent.
  *
  *   DATABASE_URL=postgres://... npm run db:check
  *
@@ -35,13 +35,13 @@ try {
 
   const uniq = await pool.query(
     `SELECT 1 FROM pg_indexes
-      WHERE tablename = 'bid_history' AND indexdef ILIKE '%UNIQUE%stripe_session%'`,
+      WHERE tablename = 'bid_history' AND indexdef ILIKE '%UNIQUE%payment_ref%'`,
   );
   if (uniq.rowCount) {
-    console.log('ok      unique index on bid_history.stripe_session (webhook idempotency)');
+    console.log('ok      unique index on bid_history.payment_ref (webhook idempotency)');
   } else {
-    console.log('MISSING unique index on bid_history.stripe_session');
-    problems.push('unique index on bid_history.stripe_session — webhook replays would double-count');
+    console.log('MISSING unique index on bid_history.payment_ref');
+    problems.push('unique index on bid_history.payment_ref — webhook replays would double-count');
   }
 
   if (problems.length) {

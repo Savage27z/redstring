@@ -13,12 +13,13 @@ CREATE TABLE IF NOT EXISTS submissions (
   category     TEXT        NOT NULL DEFAULT 'other',
   current_bid  INTEGER     NOT NULL CHECK (current_bid > 0),
   bidder_name  TEXT        NOT NULL DEFAULT 'anon',
-  -- Set once auth lands. Nullable so existing anonymous rows stay valid, and
-  -- so adding Clerk is a backfill rather than a migration with downtime.
-  -- bidder_name is client-supplied today and therefore spoofable; once this is
-  -- populated it becomes the identity of record and bidder_name is only a
-  -- display label.
-  owner_id     TEXT,
+  -- Identity of record, captured from the payment (Polar customer id) rather
+  -- than asserted by the client. bidder_name is only a display label and is
+  -- spoofable; this is not. Nullable so seed rows stay valid, and so swapping
+  -- in a different identity provider later is a backfill, not a migration.
+  owner_id       TEXT,
+  -- Contact address from the payment. Never rendered on the board.
+  contact_email  TEXT,
   claimed_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
   status       TEXT        NOT NULL DEFAULT 'active'
                            CHECK (status IN ('active', 'pending', 'removed'))
@@ -36,7 +37,7 @@ CREATE TABLE IF NOT EXISTS bid_history (
   bidder_name    TEXT        NOT NULL DEFAULT 'anon',
   owner_id       TEXT,               -- see submissions.owner_id
   previous_bid   INTEGER,
-  stripe_session TEXT UNIQUE,          -- idempotency: one session, one bid
+  payment_ref    TEXT UNIQUE,          -- Polar order id: one order, one bid
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -74,10 +75,10 @@ INSERT INTO counters (key, value) VALUES ('visitors', 0)
 --        SET current_bid = $2, bidder_name = $3, claimed_at = now()
 --      WHERE id = $1;
 --     INSERT INTO bid_history (id, submission_id, amount, bidder_name,
---                              previous_bid, stripe_session)
+--                              previous_bid, payment_ref)
 --     VALUES ($4, $1, $2, $3, $5, $6);
 --   COMMIT;
 --
--- The stripe_session UNIQUE constraint makes webhook retries idempotent —
--- Stripe redelivers on any non-2xx, and without it a flaky deploy double-counts.
+-- The payment_ref UNIQUE constraint makes webhook retries idempotent —
+-- Polar redelivers on any non-2xx, and without it a flaky deploy double-counts.
 -- ---------------------------------------------------------------------------
