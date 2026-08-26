@@ -1,5 +1,5 @@
 import { bus } from '@/lib/bus';
-import { getBoardState } from '@/lib/store';
+import { getBoardState, bumpVisitors } from '@/lib/store';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -7,12 +7,23 @@ export const runtime = 'nodejs';
 /**
  * SSE feed. Every connected board gets the new state pushed the moment a bid
  * lands, so the reflow is simultaneous for everyone watching.
+ *
+ * The visitor counter is incremented here rather than during page render:
+ * one increment per live viewer that actually opened a stream, and no
+ * side effect inside a server component.
+ *
+ * NOTE for auth: keep this route public — the board renders for logged-out
+ * visitors.
  */
 export async function GET(req: Request) {
   const encoder = new TextEncoder();
 
+  await bumpVisitors().catch(() => {
+    /* a counter failure must never keep the board from loading */
+  });
+
   const stream = new ReadableStream({
-    start(controller) {
+    async start(controller) {
       let closed = false;
 
       const send = (event: string, data: unknown) => {
@@ -26,20 +37,7 @@ export async function GET(req: Request) {
         }
       };
 
-      // Immediate sync so a late joiner isn't staring at stale server HTML.
-      send('board', getBoardState());
-
       const unsubscribe = bus.subscribe((state) => send('board', state));
-
-      // Comment frames keep proxies from closing an idle connection.
-      const keepAlive = setInterval(() => {
-        if (closed) return;
-        try {
-          controller.enqueue(encoder.encode(': ping\n\n'));
-        } catch {
-          closed = true;
-        }
-      }, 25_000);
 
       const cleanup = () => {
         if (closed) return;
@@ -53,7 +51,24 @@ export async function GET(req: Request) {
         }
       };
 
+      // Comment frames keep proxies from dropping an idle connection.
+      const keepAlive = setInterval(() => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(': ping\n\n'));
+        } catch {
+          cleanup();
+        }
+      }, 25_000);
+
       req.signal.addEventListener('abort', cleanup);
+
+      // Immediate sync so a late joiner isn't left on stale server HTML.
+      try {
+        send('board', await getBoardState());
+      } catch (err) {
+        console.error('[stream] initial state failed', err);
+      }
     },
   });
 

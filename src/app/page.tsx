@@ -1,11 +1,13 @@
 import Board from '@/components/Board';
-import { getBoardState, bumpVisitors } from '@/lib/store';
+import { getBoardState } from '@/lib/store';
 
 export const dynamic = 'force-dynamic';
 
-export default function Home() {
-  bumpVisitors();
-  const initial = getBoardState();
+export default async function Home() {
+  // The visitor counter lives in the SSE route, not here: mutating a counter
+  // during a server render is a side effect in render, and it counted crawlers
+  // and prefetches as viewers.
+  const initial = await getBoardState();
 
   return (
     <>
