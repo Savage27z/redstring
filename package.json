@@ -19,7 +19,7 @@
     "@solana/spl-token": "^0.4.15",
     "@solana/web3.js": "^1.98.4",
     "bignumber.js": "^9.3.1",
-    "next": "15.1.6",
+    "next": "^15.5.24",
     "pg": "^8.23.0",
     "qrcode": "^1.5.4",
     "react": "19.0.0",
