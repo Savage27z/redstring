@@ -113,3 +113,32 @@ body {
 .animate-sway {
   animation: sway 6s ease-in-out infinite;
 }
+
+@media (prefers-reduced-motion: reduce) {
+  /* Freeze the tween, keep the crossfade. */
+  .animate-pin-drop,
+  .animate-sway {
+    animation: none !important;
+  }
+  *,
+  *::before,
+  *::after {
+    transition-duration: 120ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Scrollbar in-world */
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-track { background: #202022; }
+::-webkit-scrollbar-thumb {
+  background: var(--color-wall-500);
+  border-radius: 6px;
+  border: 2px solid #202022;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--color-wall-400); }
+
+::selection {
+  background: var(--color-string);
+  color: var(--color-paper);
+}
