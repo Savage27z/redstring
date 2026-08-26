@@ -42,3 +42,11 @@ const STICKY_DEEP = '#e8b52f';
 const PAPER = '#fdfcf7';
 const RULE = '#aebfd4';
 const MARGIN_RED = '#d4736b';
+const INK = '#20211d';
+const RED = '#8e2a22';
+
+function fontVar(name: string, fallback: string): string {
+  if (typeof window === 'undefined') return fallback;
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return v ? v + ', ' + fallback : fallback;
+}
