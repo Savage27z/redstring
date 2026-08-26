@@ -10,7 +10,10 @@ with the runner-up tied straight to whoever holds #1.
 
 ```bash
 npm install
-npm run dev
+npm run dev     # board at http://localhost:3000
+npm test        # layout invariants
+npm run lint    # eslint
+npm run smoke   # end-to-end API checks against a running dev server
 ```
 
 Open http://localhost:3000. No `.env` needed — the board runs in memory and
@@ -47,7 +50,10 @@ genuinely unordered, and stable at 60 cards.
 | Easel | `src/components/three/Easel.tsx` | Struts spanning two points |
 | Reflow tween | `src/components/three/boardTween.ts` | One writer, many readers |
 | The string | `src/components/three/StringWeb.tsx` | Prim's MST, swept tubes |
-| Data | `src/lib/store.ts` | In-memory by default; SQL swap marked |
+| Validation | `src/lib/validation.ts` | Every limit, enforced before payment |
+| Data | `src/lib/store.ts` | Async; Postgres when `DATABASE_URL` is set |
+| Storage adapters | `src/lib/db/` | `memory.ts` (default), `postgres.ts` |
+| Rate limiting | `src/lib/rateLimit.ts` | In-process fixed window |
 | Realtime | `src/app/api/stream/route.ts` | SSE + polling fallback |
 | Payment | `src/app/api/checkout/route.ts` | Stripe Checkout; dev mode without keys |
 
@@ -81,26 +87,54 @@ to #1.
    stripe listen --forward-to localhost:3000/api/webhooks/stripe
    ```
 
-2. **Persistence.** Run `schema.sql`, set `DATABASE_URL`, and replace the four
-   functions marked `TODO (persistence)` in `src/lib/store.ts`. Signatures are
-   unchanged. Note the `stripe_session UNIQUE` constraint — Stripe redelivers
-   webhooks on any non-2xx, and without it a flaky deploy double-counts bids.
+   The webhook is idempotent: it keys on the Checkout session id, so Stripe's
+   retries and duplicate deliveries cannot apply the same bid twice. The amount
+   credited comes from `session.amount_total` — the actual charge — not from
+   metadata. Both are covered by `npm run smoke`, which signs a real webhook
+   payload locally and replays it.
+
+2. **Persistence.** Run `schema.sql`, set `DATABASE_URL`, and the Postgres
+   adapter takes over automatically — no code change. Verify the wiring with:
+
+   ```bash
+   DATABASE_URL=postgres://... npm run db:check
+   ```
+
+   `commitBid` runs the floor check and both writes in one transaction with
+   `SELECT ... FOR UPDATE` on the submission row, so two people bidding on the
+   same slot at the same moment cannot both win.
+
+   > The Postgres adapter has not been exercised against a live database —
+   > `npm run db:check` plus one test bid is worth doing before launch.
 
 3. **Realtime across instances.** `src/lib/bus.ts` is in-process, so it only
-   broadcasts to viewers on the same node. Swap it for Redis pub/sub or Supabase
-   Realtime — it's two functions, `subscribe` and `publish`.
+   broadcasts to viewers on the same node. `src/lib/rateLimit.ts` has the same
+   limitation. Behind more than one node, move both to Redis.
+
+## Adding auth
+
+`bidder_name` is client-supplied today, so anyone can bid under any name. The
+schema already carries a nullable `owner_id` on both `submissions` and
+`bid_history` for this — populate it from the session and treat `bidder_name`
+as a display label only.
+
+Two things to get right:
+
+- **Keep `/api/webhooks/stripe` public.** Behind auth middleware Stripe gets
+  401s and payments silently stop applying. `/api/board` and `/api/stream` must
+  stay public too, or the board won't render for logged-out visitors.
+- **Link identity to payment** with `client_reference_id` on the Checkout
+  session, so a completed payment maps back to an account.
 
 ### Known gaps
 
 - **Race at checkout.** If someone is outbid while their Stripe Checkout tab is
   open, the payment captures but the slot is gone. The webhook logs
   `needsRefund: true`; wire that to a refund job before taking real money.
-- **Visitor count** is a server counter, not unique visitors.
-- **No moderation.** Anything paid goes straight onto the board. Add review
-  (`status: 'pending'` already exists in the schema for this) before launch.
-- **Cards can visually clip.** Placement guarantees no overlap in board space,
-  but per-card tilt plus perspective lets corners cross. It reads as pinned
-  paper, so it's left alone.
+- **No moderation.** Anything paid goes straight onto the board. URLs are
+  validated as well-formed http(s), which is not the same as trustworthy —
+  `status: 'pending'` exists in the schema for a review step.
+- **Visitor count** is total stream connections, not unique visitors.
 
 ## Design notes
 
@@ -120,5 +154,5 @@ and camera parallax are disabled, and DOM transitions collapse to 120ms.
 ## Not built yet
 
 - **Crypto escrow** (USDC auto-refund for outbid parties) — v2, flagged as such.
-- **Logo upload.** The field exists in the schema and the card renders a logo
-  slot; the upload path is not wired.
+- **Logo upload.** `logoUrl` is carried through the schema and the store but is
+  not rendered on the card yet, and there is no upload path.
