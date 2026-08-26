@@ -32,38 +32,59 @@ export default function Board({ initial }: { initial: BoardState }) {
   useEffect(() => {
     let es: EventSource | null = null;
     let poll: ReturnType<typeof setInterval> | null = null;
+    let failures = 0;
+    let disposed = false;
+
+    const refetch = async () => {
+      try {
+        const res = await fetch('/api/board', { cache: 'no-store' });
+        if (res.ok && !disposed) setState(await res.json());
+      } catch {
+        /* offline; next tick retries */
+      }
+    };
 
     const startPolling = () => {
-      if (poll) return;
-      poll = setInterval(async () => {
-        try {
-          const res = await fetch('/api/board', { cache: 'no-store' });
-          if (res.ok) setState(await res.json());
-        } catch {
-          /* offline; next tick retries */
-        }
-      }, 5000);
+      if (poll || disposed) return;
+      poll = setInterval(refetch, 5000);
+    };
+
+    const stopPolling = () => {
+      if (!poll) return;
+      clearInterval(poll);
+      poll = null;
     };
 
     try {
       es = new EventSource('/api/stream');
+
       es.addEventListener('board', (e) => {
+        // A frame arriving means the stream is healthy again.
+        failures = 0;
+        stopPolling();
         try {
           setState(JSON.parse((e as MessageEvent).data));
         } catch {
           /* malformed frame — the next one will be fine */
         }
       });
-      // EventSource retries on its own, but some proxies buffer SSE dead; if
-      // the transport is unusable, fall back to polling rather than go stale.
-      es.onerror = startPolling;
+
+      // EventSource reconnects on its own, so a single blip must NOT start a
+      // parallel poll — that ran both transports at once and applied every
+      // update twice. Only fall back once it has actually given up (CLOSED) or
+      // failed repeatedly, and stand down again as soon as a frame arrives.
+      es.onerror = () => {
+        failures += 1;
+        if (es?.readyState === EventSource.CLOSED || failures >= 3) startPolling();
+      };
     } catch {
       startPolling();
     }
 
     return () => {
+      disposed = true;
       es?.close();
-      if (poll) clearInterval(poll);
+      stopPolling();
     };
   }, []);
 
@@ -110,7 +131,10 @@ export default function Board({ initial }: { initial: BoardState }) {
 
       {/* Sized to the board's own proportions on mobile (the framed panel is
           ~1.45:1) so the canvas isn't mostly empty room above and below it. */}
-      <main className="relative aspect-[7/5] w-full shrink-0 sm:aspect-auto sm:h-auto sm:min-h-0 sm:flex-1">
+      <main
+        className="relative aspect-[7/5] w-full shrink-0 sm:aspect-auto sm:h-auto sm:min-h-0 sm:flex-1"
+        aria-label={`Detective corkboard showing ${state.stats.totalCases} case files, sized by bid. The full ranking follows as a list.`}
+      >
         <BoardScene
           submissions={submissions}
           hovered={hovered}
@@ -128,8 +152,14 @@ export default function Board({ initial }: { initial: BoardState }) {
 
       {/* On a phone the smaller cards are a few millimetres across — accurate
           to the mechanic, useless as a tap target. The board stays the hero;
-          this gives the ranking somewhere it can actually be read and used. */}
-      <ol className="sm:hidden">
+          this gives the ranking somewhere it can actually be read and used.
+
+          On desktop it is visually hidden rather than `display: none`, because
+          the WebGL canvas exposes nothing to a screen reader: removing this
+          left assistive tech with no access to the board at all. Focusing any
+          row brings it back on screen. */}
+      <h2 className="sr-only">Case files by bid</h2>
+      <ol className="sm:pointer-events-none sm:absolute sm:h-px sm:w-px sm:overflow-hidden sm:opacity-0 sm:focus-within:pointer-events-auto sm:focus-within:static sm:focus-within:h-auto sm:focus-within:w-auto sm:focus-within:opacity-100">
         {state.submissions.map((s, i) => (
           <li key={s.id}>
             <button
