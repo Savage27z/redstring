@@ -181,3 +181,85 @@ export function drawCard(spec: CardSpec, W: number, H: number): HTMLCanvasElemen
 
   return canvas;
 }
+
+/* ------------------------------------------------------------------ photo */
+function drawPhoto(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  S: number,
+  spec: CardSpec,
+  big: boolean,
+  mid: boolean,
+) {
+  ctx.fillStyle = PHOTO_BORDER;
+  ctx.fillRect(0, 0, w, h);
+
+  const b = Math.max(3, S * 0.055);
+  const ix = b;
+  const iy = b;
+  const iw = w - b * 2;
+  const ih = h - b * 2;
+
+  const g = ctx.createLinearGradient(0, iy, 0, iy + ih);
+  g.addColorStop(0, GREEN);
+  g.addColorStop(1, GREEN_DARK);
+  ctx.fillStyle = g;
+  ctx.fillRect(ix, iy, iw, ih);
+
+  ctx.strokeStyle = 'rgba(0,0,0,0.22)';
+  ctx.lineWidth = Math.max(1, S * 0.008);
+  ctx.strokeRect(ix, iy, iw, ih);
+
+  if (!mid) return;
+
+  const pad = Math.max(5, S * 0.055);
+  ctx.textAlign = 'left';
+
+  if (big) {
+    let y = iy + pad + S * 0.09;
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.font = caseFont(S * 0.045);
+    ctx.fillText('CASE ' + String(spec.rank).padStart(3, '0'), ix + pad, y);
+
+    ctx.fillStyle = '#ffffff';
+    const titleSize = Math.min(S * 0.15, iw * 0.15);
+    ctx.font = caseFont(titleSize);
+    y += S * 0.02;
+    for (const ln of wrap(ctx, spec.title, iw - pad * 2, 2)) {
+      y += titleSize * 1.02;
+      ctx.fillText(ln, ix + pad, y);
+    }
+
+    if (spec.tagline) {
+      ctx.fillStyle = 'rgba(255,255,255,0.72)';
+      const tSize = Math.max(9, Math.min(S * 0.058, iw * 0.058));
+      ctx.font = bodyFont(tSize);
+      y += S * 0.035;
+      for (const ln of wrap(ctx, spec.tagline, iw - pad * 2, 3)) {
+        y += tSize * 1.32;
+        ctx.fillText(ln, ix + pad, y);
+      }
+    }
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = caseFont(Math.min(S * 0.14, iw * 0.19));
+    ctx.textAlign = 'right';
+    ctx.fillText(money(spec.bid), ix + iw - pad, iy + ih - pad);
+    ctx.textAlign = 'left';
+
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.font = caseFont(S * 0.042);
+    ctx.fillText(spec.bidder.toUpperCase(), ix + pad, iy + ih - pad);
+    ctx.fillText(since(spec.claimedAt), ix + pad, iy + ih - pad - S * 0.055);
+  } else {
+    ctx.fillStyle = '#ffffff';
+    const t = Math.min(S * 0.17, w * 0.13);
+    ctx.font = caseFont(t);
+    for (const ln of wrap(ctx, spec.title, iw - pad, 1)) {
+      ctx.fillText(ln, ix + pad * 0.6, iy + pad + t);
+    }
+    ctx.font = caseFont(Math.min(S * 0.18, w * 0.15));
+    ctx.fillText(money(spec.bid), ix + pad * 0.6, iy + ih - pad * 0.7);
+  }
+}
