@@ -61,3 +61,14 @@ function aspectFor(seed: number, rank: number): number {
   if (r < 0.67) return 0.78; // portrait notepaper
   return 1.28; // landscape photo
 }
+
+interface Box {
+  id: string;
+  x: number; // centre, in board units (0..aspect, 0..1)
+  y: number;
+  w: number;
+  h: number;
+  rank: number;
+  share: number;
+  seed: number;
+}
