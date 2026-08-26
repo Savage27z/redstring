@@ -189,3 +189,30 @@ export const MOCK_SUBMISSIONS: Submission[] = [
     status: 'active',
   },
 ];
+
+export const MOCK_BIDS: BidEvent[] = [
+  {
+    id: 'bid_01',
+    submissionId: 'sub_01',
+    amount: 2400,
+    bidderName: 'M. Kessler',
+    createdAt: ago(14),
+    previousBid: 1800,
+  },
+  {
+    id: 'bid_02',
+    submissionId: 'sub_02',
+    amount: 1310,
+    bidderName: 'anon',
+    createdAt: ago(38),
+    previousBid: 1100,
+  },
+  {
+    id: 'bid_03',
+    submissionId: 'sub_03',
+    amount: 880,
+    bidderName: 'D. Okonkwo',
+    createdAt: ago(51),
+    previousBid: 640,
+  },
+];
