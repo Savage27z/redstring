@@ -397,3 +397,19 @@ function drawLined(
     ctx.fillText(money(spec.bid), left, h - pad);
   }
 }
+
+/* ------------------------------------------------------------------ scrap */
+function drawScrap(ctx: CanvasRenderingContext2D, w: number, h: number, spec: CardSpec) {
+  ctx.fillStyle = spec.rank % 2 === 0 ? STICKY : PAPER;
+  ctx.fillRect(0, 0, w, h);
+  if (h >= 24 && w >= 32) {
+    ctx.fillStyle = RED;
+    const fs = Math.min(h * 0.44, w * 0.3);
+    ctx.font = caseFont(fs);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(money(spec.bid), w / 2, h / 2 + fs * 0.08);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+  }
+}
