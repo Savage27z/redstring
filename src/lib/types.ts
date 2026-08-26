@@ -53,3 +53,13 @@ export interface BoardState {
     visitors: number;
   };
 }
+
+/** Minimum bid to get pinned to the board at all. */
+export const MIN_BID = Number(process.env.NEXT_PUBLIC_MIN_BID ?? 5);
+
+/** You must beat the current holder by at least this much. */
+export const OUTBID_INCREMENT = 1;
+
+export function priceToBeat(current: number): number {
+  return current + OUTBID_INCREMENT;
+}
