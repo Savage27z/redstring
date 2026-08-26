@@ -71,3 +71,35 @@ function since(iso: string): string {
   if (h < 24) return h + 'H AGO';
   return Math.round(h / 24) + 'D AGO';
 }
+
+function wrap(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxW: number,
+  maxLines: number,
+): string[] {
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let line = '';
+  for (const word of words) {
+    const test = line ? line + ' ' + word : word;
+    if (ctx.measureText(test).width <= maxW) {
+      line = test;
+    } else {
+      if (line) lines.push(line);
+      line = word;
+      if (lines.length === maxLines) break;
+    }
+  }
+  if (line && lines.length < maxLines) lines.push(line);
+  if (lines.length) {
+    let last = lines[lines.length - 1];
+    if (ctx.measureText(last).width > maxW) {
+      while (last.length > 1 && ctx.measureText(last + '…').width > maxW) {
+        last = last.slice(0, -1);
+      }
+      lines[lines.length - 1] = last + '…';
+    }
+  }
+  return lines;
+}
