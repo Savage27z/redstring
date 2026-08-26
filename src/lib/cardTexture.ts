@@ -33,3 +33,12 @@ export function stockForRank(rank: number, area: number): PaperStock {
   if (area > 0.028) return 'photo';
   return rank % 2 === 0 ? 'sticky' : 'lined';
 }
+
+const GREEN = '#2f7d6d';
+const GREEN_DARK = '#245f53';
+const PHOTO_BORDER = '#fcfbf6';
+const STICKY = '#f6cb47';
+const STICKY_DEEP = '#e8b52f';
+const PAPER = '#fdfcf7';
+const RULE = '#aebfd4';
+const MARGIN_RED = '#d4736b';
