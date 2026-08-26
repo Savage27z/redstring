@@ -10,3 +10,19 @@
  * position is deliberately unordered. Placement is deterministic per id, so the
  * board looks hand-pinned but never reshuffles on reload.
  */
+
+export interface ScatterEntry {
+  id: string;
+  bidAmount: number;
+}
+
+export interface BoardCell {
+  id: string;
+  /** normalized 0..1 of board width / height, top-left origin */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  rank: number;
+  share: number;
+}
