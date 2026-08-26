@@ -62,3 +62,23 @@ export function getBoardState(): BoardState {
     },
   };
 }
+
+export function bumpVisitors(): number {
+  const d = db();
+  d.visitors += 1;
+  return d.visitors;
+}
+
+export interface PlaceBidInput {
+  submissionId?: string;
+  amount: number;
+  bidderName: string;
+  /** only when creating a new case file */
+  newCase?: {
+    title: string;
+    tagline: string;
+    url: string;
+    logoUrl: string | null;
+    category: Category;
+  };
+}
