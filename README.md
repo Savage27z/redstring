@@ -69,3 +69,35 @@ produced a starburst of long strands crossing the middle of the board, burying
 the cards. Prim's rooted at #1 gives short hops and few crossings — a web, the
 way a real board is strung — plus one deliberate long strand from the runner-up
 to #1.
+
+## Going to production
+
+1. **Payments.** Set `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`. Checkout
+   refuses to run in production without them. The webhook at
+   `/api/webhooks/stripe` is the *only* thing that mutates the board — the
+   success URL is not proof of payment, anyone can type it.
+
+   ```bash
+   stripe listen --forward-to localhost:3000/api/webhooks/stripe
+   ```
+
+2. **Persistence.** Run `schema.sql`, set `DATABASE_URL`, and replace the four
+   functions marked `TODO (persistence)` in `src/lib/store.ts`. Signatures are
+   unchanged. Note the `stripe_session UNIQUE` constraint — Stripe redelivers
+   webhooks on any non-2xx, and without it a flaky deploy double-counts bids.
+
+3. **Realtime across instances.** `src/lib/bus.ts` is in-process, so it only
+   broadcasts to viewers on the same node. Swap it for Redis pub/sub or Supabase
+   Realtime — it's two functions, `subscribe` and `publish`.
+
+### Known gaps
+
+- **Race at checkout.** If someone is outbid while their Stripe Checkout tab is
+  open, the payment captures but the slot is gone. The webhook logs
+  `needsRefund: true`; wire that to a refund job before taking real money.
+- **Visitor count** is a server counter, not unique visitors.
+- **No moderation.** Anything paid goes straight onto the board. Add review
+  (`status: 'pending'` already exists in the schema for this) before launch.
+- **Cards can visually clip.** Placement guarantees no overlap in board space,
+  but per-card tilt plus perspective lets corners cross. It reads as pinned
+  paper, so it's left alone.
