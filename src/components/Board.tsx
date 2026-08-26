@@ -142,10 +142,35 @@ export default function Board({ initial }: { initial: BoardState }) {
           onOpen={setOpenCase}
         />
 
-        <p className="pointer-events-none absolute bottom-3 left-4 z-10 font-[family-name:var(--font-case)] text-[10px] uppercase tracking-[0.2em] text-[rgba(239,230,210,0.32)]">
-          <span className="hidden sm:inline">Click a file to open it · drag to lean the board</span>
-          <span className="sm:hidden">Drag to lean the board</span>
-        </p>
+        {/* An empty board is the normal state before the first bid, so it has
+            to read as an invitation rather than a page that failed to load. */}
+        {state.submissions.length === 0 && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-6">
+            <div className="pointer-events-auto max-w-sm text-center">
+              <p className="font-[family-name:var(--font-case)] text-[13px] uppercase tracking-[0.26em] text-[rgba(239,230,210,0.55)]">
+                The board is empty
+              </p>
+              <p className="mt-3 text-[14px] leading-relaxed text-[rgba(239,230,210,0.42)]">
+                No cases pinned yet. The first bid takes the whole wall — and holds
+                it until someone pays more.
+              </p>
+              <button
+                onClick={() => openBid(null)}
+                className="mt-5 px-5 py-3 font-[family-name:var(--font-case)] text-[12px] uppercase tracking-[0.14em] text-[color:var(--color-paper)] shadow-[0_4px_0_#7d0d13] transition-transform active:translate-y-[2px]"
+                style={{ background: 'var(--color-string)' }}
+              >
+                {`Pin the first case · from $${state.stats.minimumBid}`}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {state.submissions.length > 0 && (
+          <p className="pointer-events-none absolute bottom-3 left-4 z-10 font-[family-name:var(--font-case)] text-[10px] uppercase tracking-[0.2em] text-[rgba(239,230,210,0.32)]">
+            <span className="hidden sm:inline">Click a file to open it · drag to lean the board</span>
+            <span className="sm:hidden">Drag to lean the board</span>
+          </p>
+        )}
       </main>
 
       <Ticker bids={state.recentBids} submissions={state.submissions} />

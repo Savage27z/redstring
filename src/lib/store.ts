@@ -40,7 +40,9 @@ export async function getBoardState(): Promise<BoardState> {
       totalRaised,
       totalCases: submissions.length,
       topBid,
-      priceToTakeNumberOne: priceToBeat(topBid),
+      // On an empty board topBid is 0, and priceToBeat(0) would advertise a
+      // price the API rejects. The floor is always the minimum bid.
+      priceToTakeNumberOne: Math.max(priceToBeat(topBid), MIN_BID),
       minimumBid: MIN_BID,
       visitors,
     },

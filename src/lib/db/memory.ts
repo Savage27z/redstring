@@ -5,12 +5,18 @@ import type { BidEvent, Submission } from '../types';
 import type { CommitBidInput, CommitBidResult, StoreAdapter } from './adapter';
 
 /**
- * In-memory store, seeded from mock data.
+ * In-memory store.
  *
- * The default so a clean clone runs with zero config and the whole
- * bid → reflow → realtime loop is exercisable without a database. State resets
- * on restart, so it is not suitable for anything that has taken money.
+ * Starts EMPTY. Demo cases are fabricated activity — invented companies,
+ * invented bidders, an invented amount raised — and shipping that on a live
+ * site is misleading social proof, not seed data. Set SEED_DEMO_BOARD=1 to load
+ * the sample board locally when you want something to look at.
+ *
+ * State resets on restart, so this is not suitable for anything that has taken
+ * money; set DATABASE_URL to switch to Postgres.
  */
+
+const seedDemo = process.env.SEED_DEMO_BOARD === '1';
 
 interface Db {
   submissions: Submission[];
@@ -27,9 +33,9 @@ const globalForDb = globalThis as unknown as { __redstringDb?: Db };
 function db(): Db {
   if (!globalForDb.__redstringDb) {
     globalForDb.__redstringDb = {
-      submissions: MOCK_SUBMISSIONS.map((s) => ({ ...s })),
-      bids: MOCK_BIDS.map((b) => ({ ...b })),
-      visitors: 1284,
+      submissions: seedDemo ? MOCK_SUBMISSIONS.map((s) => ({ ...s })) : [],
+      bids: seedDemo ? MOCK_BIDS.map((b) => ({ ...b })) : [],
+      visitors: 0,
       applied: new Map(),
       owners: new Map(),
     };
