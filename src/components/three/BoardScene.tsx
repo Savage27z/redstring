@@ -58,3 +58,16 @@ function seedOf(id: string): number {
   }
   return Math.abs(h % 100000);
 }
+
+function prefersReducedMotion(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+/** Single writer for the tween store; priority -10 so it runs before readers. */
+function TweenDriver({ store }: { store: BoardTweenStore }) {
+  useFrame((_, delta) => {
+    store.advance(Math.min(delta, 0.05), prefersReducedMotion() ? 60 : 5.5);
+  }, -10);
+  return null;
+}
