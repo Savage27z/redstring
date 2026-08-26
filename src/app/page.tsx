@@ -1,5 +1,7 @@
 import Board from '@/components/Board';
 import { getBoardState } from '@/lib/store';
+import { MIN_BID, OUTBID_INCREMENT } from '@/lib/types';
+import { LIMITS } from '@/lib/validation';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,9 +43,13 @@ export default async function Home() {
               House rules
             </h2>
             <ul className="mt-2 space-y-1 text-[13px] leading-relaxed text-[rgba(239,230,210,0.6)]">
-              <li>· $5 minimum to get pinned. No ceiling.</li>
+              <li>
+                {`· $${MIN_BID} minimum to get pinned, $${LIMITS.maxBid.toLocaleString(
+                  'en-US',
+                )} max.`}
+              </li>
               <li>· Bids are placements, not refunds.</li>
-              <li>· Beat the standing bid by $1 to take a slot.</li>
+              <li>{`· Beat the standing bid by $${OUTBID_INCREMENT} to take a slot.`}</li>
               <li>· No illegal, hateful, or malware listings.</li>
             </ul>
           </div>

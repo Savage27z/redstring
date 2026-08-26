@@ -55,7 +55,7 @@ export interface BoardState {
 }
 
 /** Minimum bid to get pinned to the board at all. */
-export const MIN_BID = Number(process.env.NEXT_PUBLIC_MIN_BID ?? 5);
+export const MIN_BID = Number(process.env.NEXT_PUBLIC_MIN_BID ?? 2);
 
 /** You must beat the current holder by at least this much. */
 export const OUTBID_INCREMENT = 1;

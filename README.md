@@ -26,7 +26,7 @@ works from a clean clone.
 
 - **Size is strictly ranked by bid.** #1 is always visibly the biggest, #2 next,
   all the way down. Area follows `share^0.62` rather than raw share: still
-  strictly monotonic, but it keeps a $5 bid from rendering sub-pixel next to a
+  strictly monotonic, but it keeps a $2 bid from rendering sub-pixel next to a
   $12,000 one.
 - **Position is deliberately unordered.** A treemap packs the board edge to edge
   in reading order, which looks like a dashboard, not evidence. Cards are
