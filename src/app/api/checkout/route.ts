@@ -5,7 +5,7 @@ import { MIN_BID, priceToBeat } from '@/lib/types';
 import { rateLimit, clientKey } from '@/lib/rateLimit';
 import { chainConfig, enabledChains, toUsdcUnits, baseNumericChainId } from '@/lib/payments/chains';
 import { createIntent, publicIntent } from '@/lib/payments/intents';
-import { createSolanaRequest } from '@/lib/payments/solana';
+import { createSolanaRequest, newReference } from '@/lib/payments/solana';
 import { encodeUsdcTransfer } from '@/lib/payments/base';
 import { validateAmount, validateNewCase, normalizeBidderName } from '@/lib/validation';
 import type { ChainId } from '@/lib/payments/chains';
@@ -41,14 +41,12 @@ export async function POST(req: Request) {
 
   // Never trust the client's idea of the price: read the current floor.
   let floor = MIN_BID;
-  let targetTitle = 'case file';
   if (submissionId) {
     const existing = await getSubmission(submissionId);
     if (!existing) {
       return NextResponse.json({ error: 'No such case file.' }, { status: 404 });
     }
     floor = priceToBeat(existing.currentBid);
-    targetTitle = existing.title;
   }
 
   const amount = validateAmount(body.amount, floor);
@@ -91,27 +89,24 @@ export async function POST(req: Request) {
     );
   }
 
-  const label = submissionId ? `Claim slot: ${targetTitle}` : `Pin case: ${newCase!.title}`;
   const amountUnits = toUsdcUnits(amount.value);
+  const origin =
+    process.env.NEXT_PUBLIC_SITE_URL || req.headers.get('origin') || 'http://localhost:3000';
 
   try {
     if (chain === 'solana') {
-      const request = createSolanaRequest(
-        config,
-        amount.value,
-        'redstring.lol',
-        `${label} — $${amount.value} USDC`,
-      );
+      // The intent has to exist before the URL, because the URL points at it.
       const intent = createIntent({
         chain,
         amount: amount.value,
         amountUnits: amountUnits.toString(),
         recipient: config.recipient,
-        reference: request.reference,
+        reference: newReference(),
         submissionId,
         bidderName,
         newCase,
       });
+      const request = createSolanaRequest(origin, intent.id, intent.reference!);
 
       return NextResponse.json({
         intent: publicIntent(intent),
