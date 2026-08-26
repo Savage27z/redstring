@@ -115,3 +115,29 @@ function grain(ctx: CanvasRenderingContext2D, W: number, H: number, amount: numb
   }
   ctx.restore();
 }
+
+/** The lifted corner on the reference's sticky notes. */
+function curledCorner(ctx: CanvasRenderingContext2D, W: number, H: number, size: number) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(W, H);
+  ctx.lineTo(W - size, H);
+  ctx.lineTo(W, H - size);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  ctx.filter = 'blur(' + Math.max(1, size * 0.14) + 'px)';
+  ctx.fill();
+  ctx.filter = 'none';
+
+  const g = ctx.createLinearGradient(W - size, H - size, W, H);
+  g.addColorStop(0, 'rgba(255,255,255,0.92)');
+  g.addColorStop(1, 'rgba(205,175,90,0.95)');
+  ctx.beginPath();
+  ctx.moveTo(W, H);
+  ctx.lineTo(W - size * 0.92, H);
+  ctx.lineTo(W, H - size * 0.92);
+  ctx.closePath();
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.restore();
+}
