@@ -31,3 +31,8 @@ class BoardBus {
     return this.listeners.size;
   }
 }
+
+const globalForBus = globalThis as unknown as { __redstringBus?: BoardBus };
+
+export const bus = globalForBus.__redstringBus ?? new BoardBus();
+if (process.env.NODE_ENV !== 'production') globalForBus.__redstringBus = bus;
