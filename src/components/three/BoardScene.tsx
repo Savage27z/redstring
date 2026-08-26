@@ -127,3 +127,155 @@ function CameraFit({ parallax }: { parallax: boolean }) {
 
   return null;
 }
+
+interface SceneProps {
+  submissions: Submission[];
+  hovered: string | null;
+  onHover: (id: string | null) => void;
+  onOpen: (s: Submission) => void;
+}
+
+function Scene({ submissions, hovered, onHover, onOpen }: SceneProps) {
+  const { panelAspect, panelW, panelH, outerW } = useBoardDims();
+  const fontsReady = useFontsReady();
+  const store = useMemo(() => new BoardTweenStore(), []);
+  const prevIds = useRef<Set<string>>(new Set());
+  const [newIds, setNewIds] = useState<Set<string>>(new Set());
+
+  const cells = useMemo(
+    () =>
+      layoutScatter(
+        submissions.map((s) => ({ id: s.id, bidAmount: s.currentBid })),
+        panelAspect,
+      ),
+    [submissions, panelAspect],
+  );
+
+  const dataKey = cells.map((c) => `${c.id}:${c.share.toFixed(6)}`).join('|');
+  const lastDataKey = useRef<string | null>(null);
+
+  useEffect(() => {
+    const isFirst = lastDataKey.current === null;
+    const bidsChanged = !isFirst && lastDataKey.current !== dataKey;
+    lastDataKey.current = dataKey;
+
+    const fresh = new Set<string>();
+    for (const c of cells) if (!prevIds.current.has(c.id)) fresh.add(c.id);
+    prevIds.current = new Set(cells.map((c) => c.id));
+    if (!isFirst && fresh.size) setNewIds(fresh);
+
+    store.setTargets(cells, isFirst || !bidsChanged || prefersReducedMotion());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataKey, cells, store]);
+
+  const byId = useMemo(() => {
+    const m = new Map<string, Submission>();
+    for (const s of submissions) m.set(s.id, s);
+    return m;
+  }, [submissions]);
+
+  return (
+    <BoardTweenContext.Provider value={store}>
+      <TweenDriver store={store} />
+      <CameraFit parallax={!prefersReducedMotion()} />
+
+      {/* key light from the upper left, matching the reference's soft top-left
+          highlight; fill keeps the cork from going muddy in the corners */}
+      <ambientLight intensity={0.85} />
+      <hemisphereLight args={['#ffe9c9', '#3a2a1c', 0.7]} />
+      <directionalLight
+        position={[-2.2, 3.4, 4.2]}
+        intensity={2.4}
+        castShadow
+        shadow-mapSize-width={2048}
+        shadow-mapSize-height={2048}
+        shadow-camera-near={0.5}
+        shadow-camera-far={20}
+        shadow-camera-left={-3.5}
+        shadow-camera-right={3.5}
+        shadow-camera-top={3.5}
+        shadow-camera-bottom={-3.5}
+        shadow-bias={-0.0009}
+        shadow-normalBias={0.02}
+      />
+      <pointLight
+        position={[1.4, 1.6, 2.2]}
+        intensity={4}
+        color="#ffe0b0"
+        distance={11}
+        decay={2}
+      />
+
+      {/* floor the easel stands on */}
+      <mesh
+        position={[0, FLOOR_Y, 0.4]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        receiveShadow
+      >
+        <planeGeometry args={[26, 26]} />
+        <meshStandardMaterial color="#20191a" roughness={0.95} metalness={0} />
+      </mesh>
+
+      {/* back wall of the room */}
+      <mesh position={[0, FLOOR_Y + 6, -3.2]} receiveShadow>
+        <planeGeometry args={[30, 16]} />
+        <meshStandardMaterial color="#1b1618" roughness={1} metalness={0} />
+      </mesh>
+
+      <Easel
+        boardW={outerW}
+        boardH={OUTER_H}
+        bottomY={BOARD_Y - OUTER_H / 2}
+        floorY={FLOOR_Y}
+      />
+
+      {/* Everything pinned to the cork lives inside this group, so it leans with
+          the board instead of floating in front of it. */}
+      <group position={[0, BOARD_Y, 0]} rotation={[LEAN, 0, 0]}>
+        <Wall width={panelW} height={panelH} frame={FRAME} />
+
+        {cells.map((cell) => {
+          const s = byId.get(cell.id);
+          if (!s) return null;
+          return (
+            <CaseCard3D
+              key={cell.id}
+              submission={s}
+              cell={cell}
+              boardW={panelW}
+              boardH={panelH}
+              aspect={panelAspect}
+              fontsReady={fontsReady}
+              hovered={hovered === cell.id}
+              isNew={newIds.has(cell.id)}
+              onHover={onHover}
+              onOpen={onOpen}
+              seed={seedOf(cell.id)}
+            />
+          );
+        })}
+
+        <StringWeb
+          cells={cells}
+          boardW={panelW}
+          boardH={panelH}
+          hoveredId={hovered}
+        />
+      </group>
+
+      {/* drei's wrapper, deliberately constrained: you can look around the
+          board, not walk behind it. */}
+      <OrbitControls
+        enablePan={false}
+        enableZoom={false}
+        target={[0, BOARD_Y - 0.15, 0]}
+        minPolarAngle={Math.PI / 2 - 0.3}
+        maxPolarAngle={Math.PI / 2 + 0.16}
+        minAzimuthAngle={-0.34}
+        maxAzimuthAngle={0.34}
+        enableDamping
+        dampingFactor={0.08}
+      />
+    </BoardTweenContext.Provider>
+  );
+}
