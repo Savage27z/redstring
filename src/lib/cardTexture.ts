@@ -9,3 +9,15 @@
  * one canvas keeps them registered at any card size, and costs one texture per
  * card instead of a mesh per glyph.
  */
+
+export type PaperStock = 'photo' | 'sticky' | 'lined' | 'scrap';
+
+export interface CardSpec {
+  title: string;
+  tagline: string;
+  bid: number;
+  bidder: string;
+  rank: number;
+  claimedAt: string;
+  stock: PaperStock;
+}
