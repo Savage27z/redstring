@@ -13,6 +13,12 @@ CREATE TABLE IF NOT EXISTS submissions (
   category     TEXT        NOT NULL DEFAULT 'other',
   current_bid  INTEGER     NOT NULL CHECK (current_bid > 0),
   bidder_name  TEXT        NOT NULL DEFAULT 'anon',
+  -- Set once auth lands. Nullable so existing anonymous rows stay valid, and
+  -- so adding Clerk is a backfill rather than a migration with downtime.
+  -- bidder_name is client-supplied today and therefore spoofable; once this is
+  -- populated it becomes the identity of record and bidder_name is only a
+  -- display label.
+  owner_id     TEXT,
   claimed_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
   status       TEXT        NOT NULL DEFAULT 'active'
                            CHECK (status IN ('active', 'pending', 'removed'))
@@ -28,6 +34,7 @@ CREATE TABLE IF NOT EXISTS bid_history (
   submission_id  TEXT        NOT NULL REFERENCES submissions(id) ON DELETE CASCADE,
   amount         INTEGER     NOT NULL CHECK (amount > 0),
   bidder_name    TEXT        NOT NULL DEFAULT 'anon',
+  owner_id       TEXT,               -- see submissions.owner_id
   previous_bid   INTEGER,
   stripe_session TEXT UNIQUE,          -- idempotency: one session, one bid
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -38,6 +45,15 @@ CREATE INDEX IF NOT EXISTS bid_history_recent_idx
 
 CREATE INDEX IF NOT EXISTS bid_history_submission_idx
   ON bid_history (submission_id, created_at DESC);
+
+-- "everything this account has bid on", once auth exists
+CREATE INDEX IF NOT EXISTS bid_history_owner_idx
+  ON bid_history (owner_id, created_at DESC)
+  WHERE owner_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS submissions_owner_idx
+  ON submissions (owner_id)
+  WHERE owner_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS counters (
   key   TEXT PRIMARY KEY,
