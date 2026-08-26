@@ -1,172 +1,119 @@
-import { MOCK_SUBMISSIONS, MOCK_BIDS } from './mock';
 import { bus } from './bus';
 import { MIN_BID, priceToBeat } from './types';
-import type { BoardState, BidEvent, Submission, Category } from './types';
+import { memoryAdapter } from './db/memory';
+import { postgresAdapter } from './db/postgres';
+import { validateAmount, normalizeBidderName, validateNewCase } from './validation';
+import type { BoardState, Submission } from './types';
+import type { StoreAdapter } from './db/adapter';
+import type { NewCaseInput } from './validation';
 
 /**
  * Data layer.
  *
- * Default: in-memory, seeded from mock data. Zero config, `npm run dev` works
- * immediately, and the whole bid/reflow/realtime loop is exercisable without a
- * database. State resets on server restart.
- *
- * Production: set DATABASE_URL and run schema.sql, then swap the four functions
- * at the bottom for their SQL equivalents (marked TODO). Everything above the
- * line is storage-agnostic.
+ * Postgres when DATABASE_URL is set, otherwise an in-memory store seeded from
+ * mock data so a clean clone runs with zero config. Everything above this file
+ * is storage-agnostic and async, so switching backends changes nothing else.
  */
 
-interface Db {
-  submissions: Submission[];
-  bids: BidEvent[];
-  visitors: number;
+// The pool is created lazily inside the adapter, so importing this costs
+// nothing until a query actually runs.
+const adapter: StoreAdapter = process.env.DATABASE_URL ? postgresAdapter : memoryAdapter;
+
+export function storeBackend(): string {
+  return adapter.name;
 }
 
-const globalForDb = globalThis as unknown as { __redstringDb?: Db };
+export async function getBoardState(): Promise<BoardState> {
+  const [submissions, recentBids, totalRaised, visitors] = await Promise.all([
+    adapter.listActive(),
+    adapter.recentBids(12),
+    adapter.totalRaised(),
+    adapter.visitors(),
+  ]);
 
-function db(): Db {
-  if (!globalForDb.__redstringDb) {
-    globalForDb.__redstringDb = {
-      submissions: MOCK_SUBMISSIONS.map((s) => ({ ...s })),
-      bids: MOCK_BIDS.map((b) => ({ ...b })),
-      visitors: 1284,
-    };
-  }
-  return globalForDb.__redstringDb;
-}
-
-function id(prefix: string): string {
-  return `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
-}
-
-export function getBoardState(): BoardState {
-  const d = db();
-  const active = d.submissions
-    .filter((s) => s.status === 'active')
-    .sort((a, b) => b.currentBid - a.currentBid || a.id.localeCompare(b.id));
-
-  const totalRaised = d.bids.reduce((sum, b) => sum + b.amount, 0);
-  const topBid = active[0]?.currentBid ?? 0;
+  const topBid = submissions[0]?.currentBid ?? 0;
 
   return {
-    submissions: active,
-    recentBids: [...d.bids]
-      .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
-      .slice(0, 12),
+    submissions,
+    recentBids,
     stats: {
       totalRaised,
-      totalCases: active.length,
+      totalCases: submissions.length,
       topBid,
       priceToTakeNumberOne: priceToBeat(topBid),
       minimumBid: MIN_BID,
-      visitors: d.visitors,
+      visitors,
     },
   };
 }
 
-export function bumpVisitors(): number {
-  const d = db();
-  d.visitors += 1;
-  return d.visitors;
+export async function bumpVisitors(): Promise<number> {
+  return adapter.bumpVisitors();
+}
+
+export async function getSubmission(
+  submissionId: string,
+): Promise<Submission | undefined> {
+  return adapter.getSubmission(submissionId);
 }
 
 export interface PlaceBidInput {
   submissionId?: string;
   amount: number;
   bidderName: string;
-  /** only when creating a new case file */
-  newCase?: {
-    title: string;
-    tagline: string;
-    url: string;
-    logoUrl: string | null;
-    category: Category;
-  };
+  newCase?: NewCaseInput;
+  /** Stripe Checkout session id — makes the write idempotent. */
+  paymentRef?: string;
 }
 
 export interface PlaceBidResult {
   ok: boolean;
   error?: string;
   submission?: Submission;
-  state?: BoardState;
+  /** true when this payment had already been applied */
+  duplicate?: boolean;
 }
 
 /**
- * The core mechanic. Either raises an existing case file's bid (outbidding the
- * current holder) or pins a brand new one. Both reflow the whole board.
+ * The core mechanic: raise an existing case file's bid, or pin a new one.
+ * Both reflow the board for every connected viewer.
  */
-export function placeBid(input: PlaceBidInput): PlaceBidResult {
-  const d = db();
-  const amount = Math.floor(Number(input.amount));
+export async function placeBid(input: PlaceBidInput): Promise<PlaceBidResult> {
+  // Re-validate at the storage boundary. The API route has already checked
+  // this, but the webhook path reconstructs input from Stripe metadata, and
+  // nothing that writes to the board should trust its caller.
+  const floor = input.submissionId
+    ? priceToBeat((await adapter.getSubmission(input.submissionId))?.currentBid ?? 0)
+    : MIN_BID;
 
-  if (!Number.isFinite(amount) || amount < MIN_BID) {
-    return { ok: false, error: `Minimum bid is $${MIN_BID}.` };
+  const amount = validateAmount(input.amount, floor);
+  if (!amount.ok) return { ok: false, error: amount.error };
+
+  let newCase: NewCaseInput | undefined;
+  if (!input.submissionId) {
+    const checked = validateNewCase(input.newCase);
+    if (!checked.ok) return { ok: false, error: checked.error };
+    newCase = checked.value;
   }
 
-  const bidderName = (input.bidderName || 'anon').trim().slice(0, 40) || 'anon';
-  let submission: Submission;
-  let previousBid: number | null = null;
+  const result = await adapter.commitBid({
+    submissionId: input.submissionId,
+    amount: amount.value,
+    bidderName: normalizeBidderName(input.bidderName),
+    newCase,
+    paymentRef: input.paymentRef,
+  });
 
-  if (input.submissionId) {
-    const existing = d.submissions.find((s) => s.id === input.submissionId);
-    if (!existing) return { ok: false, error: 'No such case file.' };
+  if (!result.ok) return { ok: false, error: result.error };
 
-    const floor = priceToBeat(existing.currentBid);
-    if (amount < floor) {
-      return { ok: false, error: `You need at least $${floor} to take this slot.` };
-    }
-
-    previousBid = existing.currentBid;
-    existing.currentBid = amount;
-    existing.bidderName = bidderName;
-    existing.claimedAt = new Date().toISOString();
-    existing.status = 'active';
-    submission = existing;
-  } else {
-    if (!input.newCase) return { ok: false, error: 'Missing case details.' };
-    const { title, tagline, url, logoUrl, category } = input.newCase;
-    if (!title?.trim()) return { ok: false, error: 'A case needs a name.' };
-    if (!url?.trim()) return { ok: false, error: 'A case needs a URL.' };
-
-    submission = {
-      id: id('sub'),
-      title: title.trim().slice(0, 60),
-      tagline: (tagline || '').trim().slice(0, 140),
-      url: url.trim(),
-      logoUrl: logoUrl || null,
-      category: category || 'other',
-      currentBid: amount,
-      bidderName,
-      claimedAt: new Date().toISOString(),
-      status: 'active',
-    };
-    d.submissions.push(submission);
+  // A replayed webhook must not re-broadcast; the board is already correct.
+  if (!result.duplicate) {
+    bus.publish(await getBoardState());
   }
 
-  const bid: BidEvent = {
-    id: id('bid'),
-    submissionId: submission.id,
-    amount,
-    bidderName,
-    createdAt: new Date().toISOString(),
-    previousBid,
+  return {
+    ok: true,
+    submission: result.submission,
+    duplicate: result.duplicate,
   };
-  d.bids.push(bid);
-
-  const state = getBoardState();
-  bus.publish(state); // every open board reflows within a tick
-  return { ok: true, submission, state };
 }
-
-export function getSubmission(submissionId: string): Submission | undefined {
-  return db().submissions.find((s) => s.id === submissionId);
-}
-
-/* ---------------------------------------------------------------------------
- * TODO (persistence): replace the four functions above with SQL against the
- * schema in schema.sql. Signatures stay identical; nothing in the UI changes.
- *
- *   getBoardState  -> SELECT * FROM submissions WHERE status='active' ...
- *   placeBid       -> BEGIN; UPDATE submissions ...; INSERT INTO bid_history ...; COMMIT;
- *   getSubmission  -> SELECT * FROM submissions WHERE id = $1
- *   bumpVisitors   -> UPDATE counters SET visitors = visitors + 1 RETURNING visitors
- * ------------------------------------------------------------------------ */
