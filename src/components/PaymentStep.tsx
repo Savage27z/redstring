@@ -216,27 +216,36 @@ export default function PaymentStep({
           )}
           <p className="text-center text-[11px] text-[color:var(--color-ink-faint)]">
             {isSolana
-              ? 'Scan with Phantom or Solflare. No wallet connection — it just sends.'
+              ? 'Scan with Phantom or Solflare — no wallet connection, and it settles on its own.'
               : 'Scan with your wallet, or copy the details below.'}
           </p>
         </div>
       )}
 
-      {/* Manual details. On Base this is the primary path, because EVM wallets
-          cannot report the payment back to us on their own. */}
+      {/* Sending to the address by hand works on both chains, but neither can
+          report itself: on Solana a hand-made transfer carries no reference to
+          scan for, and EVM has no reference at all. Either way we need the
+          transaction back, so the field is shown for both. */}
       <div className="mt-5 space-y-3 border-t border-[rgba(90,66,36,0.3)] pt-4">
+        <p className="font-[family-name:var(--font-case)] text-[10px] uppercase tracking-[0.18em] text-[color:var(--color-ink-faint)]">
+          Or send it yourself
+        </p>
         <Copyable value={payload.intent.recipient} title="Send USDC to" />
         {!isSolana && payload.base && (
           <Copyable value={payload.base.token} title="USDC contract (Base)" />
         )}
 
-        {!isSolana && (
+        {
           <div>
-            <span className={label}>Then paste the transaction hash</span>
+            <span className={label}>
+              {isSolana
+                ? 'Then paste the transaction signature'
+                : 'Then paste the transaction hash'}
+            </span>
             <input
               value={manualHash}
               onChange={(e) => setManualHash(e.target.value)}
-              placeholder="0x…"
+              placeholder={isSolana ? '5Kq…' : '0x…'}
               spellCheck={false}
               className="w-full bg-[rgba(255,255,255,0.42)] px-3 py-2 font-[family-name:var(--font-case)] text-[12px] outline-none ring-1 ring-inset ring-[rgba(90,66,36,0.4)] focus:ring-2 focus:ring-[color:var(--color-string)]"
             />
@@ -249,8 +258,12 @@ export default function PaymentStep({
             >
               {checking ? 'Checking the chain…' : 'Verify payment'}
             </button>
+            <p className="mt-2 text-[11px] leading-snug text-[color:var(--color-ink-faint)]">
+              A payment sent this way can&rsquo;t be matched to your bid on its own — paste
+              the {isSolana ? 'signature' : 'hash'} and it settles immediately.
+            </p>
           </div>
-        )}
+        }
       </div>
 
       {/* status */}

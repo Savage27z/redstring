@@ -174,7 +174,13 @@ console.log('\n--- crypto payment rails');
         check(`${c.id}: unpaid intent still pending`, poll.intent?.status === 'pending',
           JSON.stringify(poll.intent));
 
-        const bogus = await post(`/api/payments/${id}`, { txHash: '0x' + 'de'.repeat(32) });
+        // A hand-sent payment is claimed by signature/hash. Both chains must
+        // refuse one that does not exist on chain.
+        const fakeRef =
+          c.id === 'solana'
+            ? '5'.repeat(87) // base58-shaped Solana signature
+            : '0x' + 'de'.repeat(32);
+        const bogus = await post(`/api/payments/${id}`, { txHash: fakeRef });
         const afterBogus = await board();
         check(
           `${c.id}: bogus tx hash does not settle`,
@@ -184,6 +190,13 @@ console.log('\n--- crypto payment rails');
         check(
           `${c.id}: bogus tx hash places no bid`,
           afterBogus.submissions.length === before.submissions.length,
+        );
+
+        const malformed = await post(`/api/payments/${id}`, { txHash: 'obviously-not-a-tx' });
+        check(
+          `${c.id}: malformed reference rejected`,
+          malformed.json?.intent?.status !== 'confirmed',
+          JSON.stringify(malformed.json?.intent),
         );
       }
     }

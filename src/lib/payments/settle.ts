@@ -1,7 +1,7 @@
 import { placeBid } from '../store';
 import { chainConfig } from './chains';
 import { getIntent, updateIntent, publicIntent } from './intentStore';
-import { verifySolanaPayment } from './solana';
+import { verifySolanaPayment, verifySolanaSignature } from './solana';
 import { verifyBasePayment } from './base';
 import type { PaymentIntent } from './intentStore';
 
@@ -78,7 +78,17 @@ export async function settleIntent(
   }
 
   if (intent.chain === 'solana') {
-    const verified = await verifySolanaPayment(config, intent.reference!, intent.amount);
+    // A reported signature means they sent to the address by hand, so there is
+    // no reference to scan for — verify that exact transaction instead.
+    const reported = submittedHash ?? intent.txHash;
+    const verified = reported
+      ? await verifySolanaSignature(config, reported, intent.amount)
+      : await verifySolanaPayment(config, intent.reference!, intent.amount);
+
+    if (!verified.ok && verified.pending && reported) {
+      await updateIntent(intent.id, { txHash: reported });
+      return { intent: publicIntent({ ...intent, txHash: reported }) };
+    }
     if (verified.ok && verified.txHash) return applyBid(intent, verified.txHash);
     if (verified.error) {
       await updateIntent(intent.id, { error: verified.error });

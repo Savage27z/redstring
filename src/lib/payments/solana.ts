@@ -100,3 +100,60 @@ export async function verifySolanaPayment(
     };
   }
 }
+
+/**
+ * Verify a payment the payer reports by signature.
+ *
+ * The reference key only exists in transfers built from our QR. Anyone who
+ * copies the address and sends from their wallet's normal send screen produces
+ * a transfer with no reference, which `findReference` can never match — so
+ * without this path their money would simply never settle.
+ *
+ * Rather than inspect instructions (which vary: transfer vs transferChecked,
+ * with or without an account creation), this reads the token balance change on
+ * the recipient's USDC accounts. That is the ground truth for "did we receive
+ * this much", and it holds however the transfer was constructed.
+ */
+export async function verifySolanaSignature(
+  config: ChainConfig,
+  signature: string,
+  amountDollars: number,
+): Promise<SolanaVerifyResult> {
+  if (!/^[1-9A-HJ-NP-Za-km-z]{64,90}$/.test(signature)) {
+    return { ok: false, error: 'That is not a valid Solana transaction signature.' };
+  }
+
+  const connection = new Connection(config.rpc, 'confirmed');
+
+  let tx;
+  try {
+    tx = await connection.getParsedTransaction(signature, {
+      commitment: 'confirmed',
+      maxSupportedTransactionVersion: 0,
+    });
+  } catch (err) {
+    console.error('[solana] getParsedTransaction failed', err);
+    return { ok: false, pending: true };
+  }
+
+  // Not visible yet — keep polling rather than calling it a failure.
+  if (!tx) return { ok: false, pending: true };
+  if (tx.meta?.err) return { ok: false, error: 'That transaction failed on chain.' };
+
+  const mine = (b: { mint?: string; owner?: string }) =>
+    b.mint === config.usdc && b.owner === config.recipient;
+
+  const sum = (balances: readonly { mint?: string; owner?: string; uiTokenAmount: { amount: string } }[]) =>
+    balances.filter(mine).reduce((total, b) => total + BigInt(b.uiTokenAmount.amount), 0n);
+
+  const received = sum(tx.meta?.postTokenBalances ?? []) - sum(tx.meta?.preTokenBalances ?? []);
+  const needed = BigInt(Math.round(amountDollars * 1_000_000));
+
+  // Overpaying is fine; underpaying is not.
+  if (received >= needed) return { ok: true, txHash: signature };
+
+  return {
+    ok: false,
+    error: 'That transaction did not send the requested amount of USDC to the board.',
+  };
+}
