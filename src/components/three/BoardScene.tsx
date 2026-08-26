@@ -279,3 +279,23 @@ function Scene({ submissions, hovered, onHover, onOpen }: SceneProps) {
     </BoardTweenContext.Provider>
   );
 }
+
+export default function BoardScene(props: SceneProps) {
+  return (
+    <Canvas
+      shadows
+      dpr={[1, 2]}
+      gl={{ antialias: true, alpha: false }}
+      camera={{ fov: CAMERA_FOV, position: [0, 0.5, 5.4], near: 0.1, far: 80 }}
+      onCreated={({ gl }) => {
+        gl.toneMapping = THREE.ACESFilmicToneMapping;
+        gl.toneMappingExposure = 1.05;
+      }}
+      style={{ width: '100%', height: '100%', display: 'block' }}
+    >
+      <color attach="background" args={['#171314']} />
+      <fog attach="fog" args={['#171314', 7, 16]} />
+      <Scene {...props} />
+    </Canvas>
+  );
+}
