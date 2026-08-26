@@ -44,31 +44,70 @@ function money(n: number): string {
 const label =
   'mb-1.5 block font-[family-name:var(--font-case)] text-[10px] uppercase tracking-[0.2em] text-[color:var(--color-ink-faint)]';
 
+/**
+ * An address the payer can always get hold of.
+ *
+ * The async clipboard API is unavailable or blocked in a lot of in-app
+ * browsers — Twitter and Telegram webviews among them — which is exactly where
+ * a link like this gets opened. So: try the modern API, fall back to
+ * execCommand, and if both fail say so instead of appearing to work. The
+ * address itself is selectable text (one tap selects all of it), never trapped
+ * inside a button, so manual copy is always possible.
+ */
 function Copyable({ value, title }: { value: string; title: string }) {
-  const [copied, setCopied] = useState(false);
+  const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle');
+
+  async function copy() {
+    const done = (ok: boolean) => {
+      setState(ok ? 'copied' : 'failed');
+      setTimeout(() => setState('idle'), 2400);
+    };
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+        return done(true);
+      }
+    } catch {
+      /* blocked; fall through to the legacy path */
+    }
+
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = value;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      ta.setSelectionRange(0, value.length);
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return done(ok);
+    } catch {
+      return done(false);
+    }
+  }
+
   return (
     <div>
-      <span className={label}>{title}</span>
-      <button
-        type="button"
-        onClick={() => {
-          navigator.clipboard?.writeText(value).then(
-            () => {
-              setCopied(true);
-              setTimeout(() => setCopied(false), 1600);
-            },
-            () => {
-              /* clipboard blocked; the text is selectable anyway */
-            },
-          );
-        }}
-        className="flex w-full items-center gap-2 bg-[rgba(0,0,0,0.06)] p-2 text-left ring-1 ring-inset ring-[rgba(90,66,36,0.35)] transition-colors hover:bg-[rgba(0,0,0,0.1)]"
-      >
-        <code className="min-w-0 flex-1 break-all text-[11px] leading-snug">{value}</code>
-        <span className="shrink-0 font-[family-name:var(--font-case)] text-[10px] uppercase tracking-[0.14em] text-[color:var(--color-string)]">
-          {copied ? 'Copied' : 'Copy'}
+      <div className="mb-1.5 flex items-baseline justify-between gap-2">
+        <span className="font-[family-name:var(--font-case)] text-[10px] uppercase tracking-[0.2em] text-[color:var(--color-ink-faint)]">
+          {title}
         </span>
-      </button>
+        <button
+          type="button"
+          onClick={copy}
+          className="shrink-0 font-[family-name:var(--font-case)] text-[10px] uppercase tracking-[0.14em] text-[color:var(--color-string)] underline decoration-dotted underline-offset-4"
+        >
+          {state === 'copied' ? 'Copied' : state === 'failed' ? 'Select it above' : 'Copy'}
+        </button>
+      </div>
+      {/* select-all: one tap highlights the whole address, so copying by hand
+          works even where the clipboard API does not. */}
+      <code className="block w-full select-all break-all bg-[rgba(0,0,0,0.06)] p-2.5 text-[12px] leading-snug ring-1 ring-inset ring-[rgba(90,66,36,0.35)]">
+        {value}
+      </code>
     </div>
   );
 }
