@@ -82,3 +82,77 @@ export interface PlaceBidInput {
     category: Category;
   };
 }
+
+export interface PlaceBidResult {
+  ok: boolean;
+  error?: string;
+  submission?: Submission;
+  state?: BoardState;
+}
+
+/**
+ * The core mechanic. Either raises an existing case file's bid (outbidding the
+ * current holder) or pins a brand new one. Both reflow the whole board.
+ */
+export function placeBid(input: PlaceBidInput): PlaceBidResult {
+  const d = db();
+  const amount = Math.floor(Number(input.amount));
+
+  if (!Number.isFinite(amount) || amount < MIN_BID) {
+    return { ok: false, error: `Minimum bid is $${MIN_BID}.` };
+  }
+
+  const bidderName = (input.bidderName || 'anon').trim().slice(0, 40) || 'anon';
+  let submission: Submission;
+  let previousBid: number | null = null;
+
+  if (input.submissionId) {
+    const existing = d.submissions.find((s) => s.id === input.submissionId);
+    if (!existing) return { ok: false, error: 'No such case file.' };
+
+    const floor = priceToBeat(existing.currentBid);
+    if (amount < floor) {
+      return { ok: false, error: `You need at least $${floor} to take this slot.` };
+    }
+
+    previousBid = existing.currentBid;
+    existing.currentBid = amount;
+    existing.bidderName = bidderName;
+    existing.claimedAt = new Date().toISOString();
+    existing.status = 'active';
+    submission = existing;
+  } else {
+    if (!input.newCase) return { ok: false, error: 'Missing case details.' };
+    const { title, tagline, url, logoUrl, category } = input.newCase;
+    if (!title?.trim()) return { ok: false, error: 'A case needs a name.' };
+    if (!url?.trim()) return { ok: false, error: 'A case needs a URL.' };
+
+    submission = {
+      id: id('sub'),
+      title: title.trim().slice(0, 60),
+      tagline: (tagline || '').trim().slice(0, 140),
+      url: url.trim(),
+      logoUrl: logoUrl || null,
+      category: category || 'other',
+      currentBid: amount,
+      bidderName,
+      claimedAt: new Date().toISOString(),
+      status: 'active',
+    };
+    d.submissions.push(submission);
+  }
+
+  const bid: BidEvent = {
+    id: id('bid'),
+    submissionId: submission.id,
+    amount,
+    bidderName,
+    createdAt: new Date().toISOString(),
+    previousBid,
+  };
+  d.bids.push(bid);
+
+  const state = getBoardState();
+  bus.publish(state); // every open board reflows within a tick
+  return { ok: true, submission, state };
+}
