@@ -32,3 +32,9 @@ CREATE TABLE IF NOT EXISTS bid_history (
   stripe_session TEXT UNIQUE,          -- idempotency: one session, one bid
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE INDEX IF NOT EXISTS bid_history_recent_idx
+  ON bid_history (created_at DESC);
+
+CREATE INDEX IF NOT EXISTS bid_history_submission_idx
+  ON bid_history (submission_id, created_at DESC);
