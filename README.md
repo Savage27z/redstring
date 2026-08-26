@@ -101,3 +101,18 @@ to #1.
 - **Cards can visually clip.** Placement guarantees no overlap in board space,
   but per-card tilt plus perspective lets corners cross. It reads as pinned
   paper, so it's left alone.
+
+## Design notes
+
+Cork, wood grain, and every card face are drawn to canvas at runtime — no image
+requests, and they stay sharp at any size. Stock varies by rank the way a real
+board does: instant photos with a deep green field for the top bids, yellow
+sticky notes and ruled notepaper below, bare scraps at the bottom. Pins are
+chrome except the prime suspect's, which is red — if a third of the board is
+red it stops meaning anything.
+
+Type is **Special Elite** (case notes, stamps, figures) against **Archivo**
+(body copy).
+
+Reduced motion is honored: the reflow snaps instead of tweening, the pin-drop
+and camera parallax are disabled, and DOM transitions collapse to 120ms.
