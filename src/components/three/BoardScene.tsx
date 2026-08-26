@@ -20,3 +20,27 @@ const OUTER_H = PANEL_H + FRAME * 2;
 /** The board hangs above the floor on its legs. */
 const BOARD_Y = 0.42;
 const FLOOR_Y = BOARD_Y - OUTER_H / 2 - 0.92;
+
+/**
+ * Board proportions, by viewport.
+ *
+ * Height is always the binding constraint on a desktop canvas, so a 3:2 panel
+ * leaves a third of the screen empty either side of it and can't be grown by
+ * moving the camera — pulling in would just crop the cork. Widening the panel
+ * itself is what actually makes the board bigger: same height, more cork, and
+ * every card scales up with the extra area.
+ */
+function useBoardDims() {
+  const { size } = useThree();
+  const compact = size.width < 640;
+  const panelAspect = compact ? 1.5 : 1.8;
+  const panelW = PANEL_H * panelAspect;
+  return {
+    compact,
+    panelAspect,
+    panelW,
+    panelH: PANEL_H,
+    outerW: panelW + FRAME * 2,
+    outerH: OUTER_H,
+  };
+}
