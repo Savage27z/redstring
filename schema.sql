@@ -1,0 +1,5 @@
+-- redstring.lol — Postgres schema
+--
+-- The in-memory store in src/lib/store.ts is the default so a clean clone runs
+-- with zero config. Point DATABASE_URL at a Postgres instance, run this file,
+-- then swap the four marked functions in store.ts for SQL. Nothing else changes.
