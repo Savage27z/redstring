@@ -4,7 +4,7 @@ import { placeBid, getSubmission } from '@/lib/store';
 import { MIN_BID, priceToBeat } from '@/lib/types';
 import { rateLimit, clientKey } from '@/lib/rateLimit';
 import { chainConfig, enabledChains, toUsdcUnits, baseNumericChainId } from '@/lib/payments/chains';
-import { createIntent, publicIntent } from '@/lib/payments/intents';
+import { createIntent, publicIntent } from '@/lib/payments/intentStore';
 import { createSolanaRequest } from '@/lib/payments/solana';
 import { buildPaymentUri } from '@/lib/payments/base';
 import { validateAmount, validateNewCase, normalizeBidderName } from '@/lib/validation';
@@ -94,7 +94,7 @@ export async function POST(req: Request) {
   try {
     if (chain === 'solana') {
       const request = createSolanaRequest(config, amount.value);
-      const intent = createIntent({
+      const intent = await createIntent({
         chain,
         amount: amount.value,
         amountUnits: amountUnits.toString(),
@@ -115,7 +115,7 @@ export async function POST(req: Request) {
       });
     }
 
-    const intent = createIntent({
+    const intent = await createIntent({
       chain,
       amount: amount.value,
       amountUnits: amountUnits.toString(),

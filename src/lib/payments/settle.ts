@@ -1,9 +1,9 @@
 import { placeBid } from '../store';
 import { chainConfig } from './chains';
-import { getIntent, updateIntent, publicIntent } from './intents';
+import { getIntent, updateIntent, publicIntent } from './intentStore';
 import { verifySolanaPayment } from './solana';
 import { verifyBasePayment } from './base';
-import type { PaymentIntent } from './intents';
+import type { PaymentIntent } from './intentStore';
 
 /**
  * The one place a crypto payment turns into a bid.
@@ -42,14 +42,14 @@ async function applyBid(intent: PaymentIntent, txHash: string): Promise<SettleRe
       txHash,
       error: result.error,
     });
-    updateIntent(intent.id, { status: 'failed', txHash, error: result.error });
+    await updateIntent(intent.id, { status: 'failed', txHash, error: result.error });
     return {
       intent: publicIntent({ ...intent, status: 'failed', txHash, error: result.error }),
       error: result.error,
     };
   }
 
-  const updated = updateIntent(intent.id, { status: 'confirmed', txHash }) ?? intent;
+  const updated = (await updateIntent(intent.id, { status: 'confirmed', txHash })) ?? intent;
   return { intent: publicIntent(updated), placed: !result.duplicate };
 }
 
@@ -63,7 +63,7 @@ export async function settleIntent(
   intentId: string,
   submittedHash?: string,
 ): Promise<SettleResult> {
-  const intent = getIntent(intentId);
+  const intent = await getIntent(intentId);
   if (!intent) return { intent: publicIntent(emptyIntent(intentId)), error: 'Unknown payment.' };
 
   // Already settled: return the same answer rather than re-verifying.
@@ -81,7 +81,7 @@ export async function settleIntent(
     const verified = await verifySolanaPayment(config, intent.reference!, intent.amount);
     if (verified.ok && verified.txHash) return applyBid(intent, verified.txHash);
     if (verified.error) {
-      updateIntent(intent.id, { error: verified.error });
+      await updateIntent(intent.id, { error: verified.error });
       return { intent: publicIntent({ ...intent, error: verified.error }), error: verified.error };
     }
     return { intent: publicIntent(intent) }; // still pending
@@ -96,11 +96,11 @@ export async function settleIntent(
 
   if (verified.pending) {
     // Remember the hash so polling can pick it up once it is mined.
-    updateIntent(intent.id, { txHash: hash });
+    await updateIntent(intent.id, { txHash: hash });
     return { intent: publicIntent({ ...intent, txHash: hash }) };
   }
 
-  updateIntent(intent.id, { error: verified.error });
+  await updateIntent(intent.id, { error: verified.error });
   return { intent: publicIntent({ ...intent, error: verified.error }), error: verified.error };
 }
 

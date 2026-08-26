@@ -1,5 +1,5 @@
-import { Pool } from 'pg';
 import type { PoolClient } from 'pg';
+import { getPool, ensureSchema } from './pool';
 import { priceToBeat } from '../types';
 import { LIMITS } from '../validation';
 import type { BidEvent, Category, Submission } from '../types';
@@ -14,20 +14,10 @@ import type { CommitBidInput, CommitBidResult, StoreAdapter } from './adapter';
  * same moment must not both succeed.
  */
 
-const globalForPool = globalThis as unknown as { __redstringPool?: Pool };
-
-function pool(): Pool {
-  if (!globalForPool.__redstringPool) {
-    globalForPool.__redstringPool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      max: 10,
-      idleTimeoutMillis: 30_000,
-      // Managed Postgres (Railway, Supabase, Neon) terminates TLS with certs
-      // Node does not chain to by default.
-      ssl: process.env.DATABASE_SSL === 'false' ? undefined : { rejectUnauthorized: false },
-    });
-  }
-  return globalForPool.__redstringPool;
+/** Every entry point awaits the schema once, then queries normally. */
+async function pool() {
+  await ensureSchema();
+  return getPool();
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -63,7 +53,7 @@ function newId(prefix: string): string {
 }
 
 async function tx<T>(fn: (c: PoolClient) => Promise<T>): Promise<T> {
-  const client = await pool().connect();
+  const client = await (await pool()).connect();
   try {
     await client.query('BEGIN');
     const out = await fn(client);
@@ -81,7 +71,7 @@ export const postgresAdapter: StoreAdapter = {
   name: 'postgres',
 
   async listActive() {
-    const { rows } = await pool().query(
+    const { rows } = await (await pool()).query(
       `SELECT * FROM submissions
         WHERE status = 'active'
         ORDER BY current_bid DESC, id ASC`,
@@ -90,7 +80,7 @@ export const postgresAdapter: StoreAdapter = {
   },
 
   async recentBids(limit) {
-    const { rows } = await pool().query(
+    const { rows } = await (await pool()).query(
       `SELECT * FROM bid_history ORDER BY created_at DESC LIMIT $1`,
       [limit],
     );
@@ -98,28 +88,28 @@ export const postgresAdapter: StoreAdapter = {
   },
 
   async totalRaised() {
-    const { rows } = await pool().query(
+    const { rows } = await (await pool()).query(
       `SELECT COALESCE(SUM(amount), 0) AS total FROM bid_history`,
     );
     return Number(rows[0]?.total ?? 0);
   },
 
   async getSubmission(submissionId) {
-    const { rows } = await pool().query(`SELECT * FROM submissions WHERE id = $1`, [
+    const { rows } = await (await pool()).query(`SELECT * FROM submissions WHERE id = $1`, [
       submissionId,
     ]);
     return rows[0] ? toSubmission(rows[0]) : undefined;
   },
 
   async visitors() {
-    const { rows } = await pool().query(
+    const { rows } = await (await pool()).query(
       `SELECT value FROM counters WHERE key = 'visitors'`,
     );
     return Number(rows[0]?.value ?? 0);
   },
 
   async bumpVisitors() {
-    const { rows } = await pool().query(
+    const { rows } = await (await pool()).query(
       `INSERT INTO counters (key, value) VALUES ('visitors', 1)
          ON CONFLICT (key) DO UPDATE SET value = counters.value + 1
        RETURNING value`,

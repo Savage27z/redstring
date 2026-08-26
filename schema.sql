@@ -82,3 +82,39 @@ INSERT INTO counters (key, value) VALUES ('visitors', 0)
 -- The payment_ref UNIQUE constraint makes webhook retries idempotent —
 -- Polar redelivers on any non-2xx, and without it a flaky deploy double-counts.
 -- ---------------------------------------------------------------------------
+
+
+-- ---------------------------------------------------------------------------
+-- Pending payments.
+--
+-- These MUST be durable. On Solana the reference key is the only thing that
+-- links an on-chain transfer back to the bid it paid for; lose it and the payer
+-- has sent money that can never be matched to anything, with no record that it
+-- was ever owed. Keeping intents in memory meant a restart mid-payment did
+-- exactly that.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS payment_intents (
+  id             TEXT PRIMARY KEY,
+  chain          TEXT        NOT NULL CHECK (chain IN ('solana', 'base')),
+  amount         INTEGER     NOT NULL CHECK (amount > 0),
+  amount_units   TEXT        NOT NULL,
+  recipient      TEXT        NOT NULL,
+  -- Solana Pay reference key. Unused on EVM, which has no equivalent.
+  reference      TEXT UNIQUE,
+  status         TEXT        NOT NULL DEFAULT 'pending'
+                             CHECK (status IN ('pending', 'confirmed', 'expired', 'failed')),
+  tx_hash        TEXT,
+  error          TEXT,
+  -- what to apply once the money arrives
+  submission_id  TEXT,
+  bidder_name    TEXT        NOT NULL DEFAULT 'anon',
+  new_case       JSONB,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at     TIMESTAMPTZ NOT NULL
+);
+
+-- the settlement poller sweeps open intents by reference
+CREATE INDEX IF NOT EXISTS payment_intents_open_idx
+  ON payment_intents (status, expires_at)
+  WHERE status = 'pending';
