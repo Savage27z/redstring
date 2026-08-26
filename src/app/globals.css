@@ -45,3 +45,37 @@ body {
   font-family: var(--font-body);
   overflow-x: hidden;
 }
+
+/* ---------------------------------------------------------------------------
+ * PAPER
+ * ------------------------------------------------------------------------ */
+.paper {
+  background-color: var(--color-paper);
+  background-image:
+    radial-gradient(circle at 15% 25%, rgba(160, 140, 100, 0.07) 0%, transparent 40%),
+    radial-gradient(circle at 85% 75%, rgba(160, 140, 100, 0.06) 0%, transparent 35%),
+    linear-gradient(178deg, #f3ebd9 0%, #e9dfc7 100%);
+}
+
+/* Torn bottom edge — the one real aesthetic risk, applied only to the top
+   cards so it stays a signature and not a texture. */
+
+/* Coffee ring. Sits on exactly one card per board — an accident, not a motif. */
+
+/* Redacted bar — used on metadata, never on anything the reader needs. */
+.redacted {
+  background: var(--color-ink);
+  color: transparent;
+  user-select: none;
+  border-radius: 1px;
+}
+
+/* Rubber stamp */
+.stamp {
+  font-family: var(--font-case);
+  border: 2.5px solid currentColor;
+  border-radius: 3px;
+  letter-spacing: 0.08em;
+  opacity: 0.72;
+  mix-blend-mode: multiply;
+}
