@@ -238,8 +238,16 @@ export default function BidModal({
                     className={field}
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
-                    placeholder="https://acme.com"
-                    type="url"
+                    placeholder="acme.com"
+                    // Deliberately not type="url": that makes the browser demand
+                    // a scheme and block submit on `acme.com`, which the server
+                    // accepts perfectly well (it adds https:// itself). Client
+                    // validation stricter than the server just rejects good input.
+                    type="text"
+                    inputMode="url"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
                     required
                   />
                 </div>
