@@ -90,7 +90,6 @@ function CameraFit({ parallax }: { parallax: boolean }) {
   const { compact, outerW } = useBoardDims();
 
   const { baseZ, target } = useMemo(() => {
-    const cam = camera as THREE.PerspectiveCamera;
     const vAspect = size.width / Math.max(1, size.height);
     const halfFov = (CAMERA_FOV / 2) * (Math.PI / 180);
 
@@ -106,14 +105,19 @@ function CameraFit({ parallax }: { parallax: boolean }) {
     const zForH = sceneH / 2 / Math.tan(halfFov);
     const zForW = sceneW / 2 / (Math.tan(halfFov) * vAspect);
 
-    cam.fov = CAMERA_FOV;
-    cam.updateProjectionMatrix();
-
     return {
       baseZ: Math.max(zForH, zForW),
       target: new THREE.Vector3(0, (top + bottom) / 2, 0),
     };
-  }, [camera, size.width, size.height, compact, outerW]);
+  }, [size.width, size.height, compact, outerW]);
+
+  // Applying the projection change belongs in an effect, not in the memo that
+  // computes the numbers — a memo must stay pure.
+  useEffect(() => {
+    const cam = camera as THREE.PerspectiveCamera;
+    cam.fov = CAMERA_FOV;
+    cam.updateProjectionMatrix();
+  }, [camera, baseZ]);
 
   useFrame((_, delta) => {
     const k = Math.min(1, delta * 3.2);
@@ -165,7 +169,6 @@ function Scene({ submissions, hovered, onHover, onOpen }: SceneProps) {
     if (!isFirst && fresh.size) setNewIds(fresh);
 
     store.setTargets(cells, isFirst || !bidsChanged || prefersReducedMotion());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dataKey, cells, store]);
 
   const byId = useMemo(() => {
