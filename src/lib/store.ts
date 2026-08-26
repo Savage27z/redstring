@@ -14,3 +14,11 @@ import type { BoardState, BidEvent, Submission, Category } from './types';
  * at the bottom for their SQL equivalents (marked TODO). Everything above the
  * line is storage-agnostic.
  */
+
+interface Db {
+  submissions: Submission[];
+  bids: BidEvent[];
+  visitors: number;
+}
+
+const globalForDb = globalThis as unknown as { __redstringDb?: Db };
