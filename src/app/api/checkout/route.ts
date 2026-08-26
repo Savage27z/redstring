@@ -1,23 +1,24 @@
 import { NextResponse } from 'next/server';
+import QRCode from 'qrcode';
 import { placeBid, getSubmission } from '@/lib/store';
 import { MIN_BID, priceToBeat } from '@/lib/types';
 import { rateLimit, clientKey } from '@/lib/rateLimit';
-import { polarConfig, polarClient, toMinorUnits } from '@/lib/payments';
-import {
-  validateAmount,
-  validateNewCase,
-  normalizeBidderName,
-  encodeCaseMetadata,
-} from '@/lib/validation';
+import { chainConfig, enabledChains, toUsdcUnits, baseNumericChainId } from '@/lib/payments/chains';
+import { createIntent, publicIntent } from '@/lib/payments/intents';
+import { createSolanaRequest } from '@/lib/payments/solana';
+import { encodeUsdcTransfer } from '@/lib/payments/base';
+import { validateAmount, validateNewCase, normalizeBidderName } from '@/lib/validation';
+import type { ChainId } from '@/lib/payments/chains';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 /**
- * Creates a Polar checkout for a bid.
+ * Opens a payment for a bid.
  *
- * Everything is validated *before* a checkout exists, because anything rejected
- * afterwards is rejected with the customer's money already taken.
+ * Nothing reaches the board here. This validates the bid, fixes the price
+ * server-side, and hands back what the payer needs to send USDC. The board only
+ * changes once the chain confirms the transfer — see /api/payments/[id].
  */
 export async function POST(req: Request) {
   const limit = rateLimit(`checkout:${clientKey(req)}`, 10, 60_000);
@@ -57,68 +58,94 @@ export async function POST(req: Request) {
 
   const bidderName = normalizeBidderName(body.bidderName);
 
-  let newCaseJson: string | undefined;
   let newCase;
   if (!submissionId) {
     const checked = validateNewCase(body.newCase);
     if (!checked.ok) return NextResponse.json({ error: checked.error }, { status: 400 });
     newCase = checked.value;
-
-    // The webhook rebuilds the submission from checkout metadata, so it has to
-    // fit Polar's 500-character-per-value limit intact. Refuse rather than
-    // truncate — a sliced payload is invalid JSON and would silently lose a
-    // submission the customer had already paid for.
-    const encoded = encodeCaseMetadata(newCase);
-    if (!encoded.ok) return NextResponse.json({ error: encoded.error }, { status: 400 });
-    newCaseJson = encoded.value;
   }
 
-  const config = polarConfig();
+  const available = enabledChains();
 
   /* ---- dev mode: no payment ------------------------------------------- */
-  // Gated on an explicit opt-in as well as missing credentials, so a
-  // misconfigured deploy cannot quietly start handing out free placements.
-  if (!config) {
+  // Gated on an explicit opt-in as well as missing config, so a misconfigured
+  // deploy cannot quietly start handing out free placements.
+  if (available.length === 0) {
     const devBidsAllowed =
       process.env.NODE_ENV !== 'production' && process.env.ALLOW_DEV_BIDS !== '0';
-
     if (!devBidsAllowed) {
       return NextResponse.json({ error: 'Payments are not configured.' }, { status: 503 });
     }
-
     const result = await placeBid({ submissionId, amount: amount.value, bidderName, newCase });
     if (!result.ok) return NextResponse.json({ error: result.error }, { status: 409 });
     return NextResponse.json({ devMode: true, submission: result.submission });
   }
 
-  /* ---- real checkout --------------------------------------------------- */
-  try {
-    const polar = polarClient(config);
-    const origin =
-      process.env.NEXT_PUBLIC_SITE_URL || req.headers.get('origin') || 'http://localhost:3000';
+  const requested = body.chain as ChainId | undefined;
+  const chain: ChainId = requested ?? available[0].id;
+  const config = chainConfig(chain);
+  if (!config) {
+    return NextResponse.json(
+      { error: 'That chain is not available.', chains: available.map((c) => c.id) },
+      { status: 400 },
+    );
+  }
 
-    const checkout = await polar.checkouts.create({
-      products: [config.productId],
-      // A one-off fixed price pinned to this exact bid. The catalog price is
-      // ignored, and the buyer cannot change the amount at checkout.
-      prices: {
-        [config.productId]: [
-          { amountType: 'fixed', priceAmount: toMinorUnits(amount.value) },
-        ],
-      },
-      successUrl: `${origin}/?claimed=1&checkout_id={CHECKOUT_ID}`,
-      metadata: {
-        submissionId: submissionId ?? '',
+  const label = submissionId ? `Claim slot: ${targetTitle}` : `Pin case: ${newCase!.title}`;
+  const amountUnits = toUsdcUnits(amount.value);
+
+  try {
+    if (chain === 'solana') {
+      const request = createSolanaRequest(
+        config,
+        amount.value,
+        'redstring.lol',
+        `${label} — $${amount.value} USDC`,
+      );
+      const intent = createIntent({
+        chain,
         amount: amount.value,
+        amountUnits: amountUnits.toString(),
+        recipient: config.recipient,
+        reference: request.reference,
+        submissionId,
         bidderName,
-        newCase: newCaseJson ?? '',
-        label: submissionId ? `Claim slot — ${targetTitle}` : `Pin new case — ${newCase!.title}`,
-      },
+        newCase,
+      });
+
+      return NextResponse.json({
+        intent: publicIntent(intent),
+        solana: {
+          url: request.url,
+          // Rendered here so no QR library ships to the browser.
+          qr: await QRCode.toDataURL(request.url, { margin: 1, width: 512 }),
+        },
+      });
+    }
+
+    const intent = createIntent({
+      chain,
+      amount: amount.value,
+      amountUnits: amountUnits.toString(),
+      recipient: config.recipient,
+      submissionId,
+      bidderName,
+      newCase,
     });
 
-    return NextResponse.json({ checkoutUrl: checkout.url });
+    return NextResponse.json({
+      intent: publicIntent(intent),
+      base: {
+        // The wallet signs calldata we built, so the amount is not the
+        // browser's to decide.
+        to: config.usdc,
+        data: encodeUsdcTransfer(config.recipient, amountUnits),
+        chainIdHex: `0x${baseNumericChainId().toString(16)}`,
+        chainId: baseNumericChainId(),
+      },
+    });
   } catch (err) {
     console.error('[checkout]', err);
-    return NextResponse.json({ error: 'Could not start checkout.' }, { status: 500 });
+    return NextResponse.json({ error: 'Could not open a payment.' }, { status: 500 });
   }
 }
