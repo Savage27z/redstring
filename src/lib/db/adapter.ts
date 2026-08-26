@@ -30,11 +30,18 @@ export interface CommitBidInput {
   bidderName: string;
   newCase?: NewCaseInput;
   /**
-   * Stripe Checkout session id. Makes the write idempotent: Stripe redelivers
-   * webhooks on any non-2xx and can deliver the same event more than once, and
-   * without this a retry applies the same bid twice.
+   * Polar order id. Makes the write idempotent: Polar retries webhooks on any
+   * non-2xx and can deliver the same event more than once, and without this a
+   * retry applies the same bid twice.
    */
   paymentRef?: string;
+  /**
+   * Identity of record, taken from the payment rather than asserted by the
+   * client. `bidderName` is only a display label and is spoofable; these are
+   * not, and are never rendered on the board.
+   */
+  ownerId?: string | null;
+  contactEmail?: string | null;
 }
 
 export interface CommitBidResult {

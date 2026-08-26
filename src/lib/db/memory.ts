@@ -16,6 +16,8 @@ interface Db {
   submissions: Submission[];
   bids: BidEvent[];
   visitors: number;
+  /** submission id -> payment identity; deliberately not part of BoardState */
+  owners: Map<string, { ownerId: string | null; contactEmail: string | null }>;
   /** paymentRef -> submission id, for idempotent replays */
   applied: Map<string, string>;
 }
@@ -29,6 +31,7 @@ function db(): Db {
       bids: MOCK_BIDS.map((b) => ({ ...b })),
       visitors: 1284,
       applied: new Map(),
+      owners: new Map(),
     };
   }
   return globalForDb.__redstringDb;
@@ -140,6 +143,12 @@ export const memoryAdapter: StoreAdapter = {
     });
 
     if (input.paymentRef) d.applied.set(input.paymentRef, submission.id);
+    if (input.ownerId || input.contactEmail) {
+      d.owners.set(submission.id, {
+        ownerId: input.ownerId ?? null,
+        contactEmail: input.contactEmail ?? null,
+      });
+    }
 
     return { ok: true, submission: { ...submission } };
   },

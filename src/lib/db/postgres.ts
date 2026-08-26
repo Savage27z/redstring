@@ -129,11 +129,11 @@ export const postgresAdapter: StoreAdapter = {
 
   async commitBid(input: CommitBidInput): Promise<CommitBidResult> {
     return tx(async (c) => {
-      // Idempotency first: bid_history.stripe_session is UNIQUE, so a replayed
+      // Idempotency first: bid_history.payment_ref is UNIQUE, so a replayed
       // webhook finds the original row instead of bidding again.
       if (input.paymentRef) {
         const { rows } = await c.query(
-          `SELECT submission_id FROM bid_history WHERE stripe_session = $1`,
+          `SELECT submission_id FROM bid_history WHERE payment_ref = $1`,
           [input.paymentRef],
         );
         if (rows[0]) {
@@ -172,10 +172,21 @@ export const postgresAdapter: StoreAdapter = {
         previousBid = Number(existing.current_bid);
         const updated = await c.query(
           `UPDATE submissions
-              SET current_bid = $2, bidder_name = $3, claimed_at = now(), status = 'active'
+              SET current_bid = $2,
+                  bidder_name = $3,
+                  claimed_at = now(),
+                  status = 'active',
+                  owner_id = COALESCE($4, owner_id),
+                  contact_email = COALESCE($5, contact_email)
             WHERE id = $1
         RETURNING *`,
-          [input.submissionId, input.amount, input.bidderName],
+          [
+            input.submissionId,
+            input.amount,
+            input.bidderName,
+            input.ownerId ?? null,
+            input.contactEmail ?? null,
+          ],
         );
         submission = toSubmission(updated.rows[0]);
       } else {
@@ -183,8 +194,9 @@ export const postgresAdapter: StoreAdapter = {
         const n = input.newCase;
         const inserted = await c.query(
           `INSERT INTO submissions
-             (id, title, tagline, url, logo_url, category, current_bid, bidder_name, status)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active')
+             (id, title, tagline, url, logo_url, category, current_bid,
+              bidder_name, owner_id, contact_email, status)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'active')
         RETURNING *`,
           [
             newId('sub'),
@@ -195,6 +207,8 @@ export const postgresAdapter: StoreAdapter = {
             n.category,
             input.amount,
             input.bidderName,
+            input.ownerId ?? null,
+            input.contactEmail ?? null,
           ],
         );
         submission = toSubmission(inserted.rows[0]);
@@ -202,14 +216,15 @@ export const postgresAdapter: StoreAdapter = {
 
       await c.query(
         `INSERT INTO bid_history
-           (id, submission_id, amount, bidder_name, previous_bid, stripe_session)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         ON CONFLICT (stripe_session) DO NOTHING`,
+           (id, submission_id, amount, bidder_name, owner_id, previous_bid, payment_ref)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT (payment_ref) DO NOTHING`,
         [
           newId('bid'),
           submission.id,
           input.amount,
           input.bidderName,
+          input.ownerId ?? null,
           previousBid,
           input.paymentRef ?? null,
         ],

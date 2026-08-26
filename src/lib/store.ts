@@ -62,8 +62,11 @@ export interface PlaceBidInput {
   amount: number;
   bidderName: string;
   newCase?: NewCaseInput;
-  /** Stripe Checkout session id — makes the write idempotent. */
+  /** Polar order id — makes the write idempotent. */
   paymentRef?: string;
+  /** Identity from the payment, never rendered. */
+  ownerId?: string | null;
+  contactEmail?: string | null;
 }
 
 export interface PlaceBidResult {
@@ -80,7 +83,7 @@ export interface PlaceBidResult {
  */
 export async function placeBid(input: PlaceBidInput): Promise<PlaceBidResult> {
   // Re-validate at the storage boundary. The API route has already checked
-  // this, but the webhook path reconstructs input from Stripe metadata, and
+  // this, but the webhook path reconstructs input from Polar metadata, and
   // nothing that writes to the board should trust its caller.
   const floor = input.submissionId
     ? priceToBeat((await adapter.getSubmission(input.submissionId))?.currentBid ?? 0)
@@ -102,6 +105,8 @@ export async function placeBid(input: PlaceBidInput): Promise<PlaceBidResult> {
     bidderName: normalizeBidderName(input.bidderName),
     newCase,
     paymentRef: input.paymentRef,
+    ownerId: input.ownerId,
+    contactEmail: input.contactEmail,
   });
 
   if (!result.ok) return { ok: false, error: result.error };
