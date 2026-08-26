@@ -26,3 +26,14 @@ export interface BoardCell {
   rank: number;
   share: number;
 }
+
+/** Fraction of the cork actually covered by paper. The rest is breathing room. */
+const FILL = 0.54;
+
+/**
+ * Bids are wildly skewed ($2400 vs $5). Raw area-proportional sizing makes the
+ * tail literally sub-pixel, so area follows share^GAMMA: still strictly
+ * monotonic — #1 is always visibly biggest — but the bottom of the board stays
+ * a readable card instead of a speck.
+ */
+const GAMMA = 0.62;
