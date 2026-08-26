@@ -38,3 +38,30 @@ CREATE INDEX IF NOT EXISTS bid_history_recent_idx
 
 CREATE INDEX IF NOT EXISTS bid_history_submission_idx
   ON bid_history (submission_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS counters (
+  key   TEXT PRIMARY KEY,
+  value BIGINT NOT NULL DEFAULT 0
+);
+
+INSERT INTO counters (key, value) VALUES ('visitors', 0)
+  ON CONFLICT (key) DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- Placing a bid must be atomic: the floor check and the write have to happen in
+-- the same transaction, or two simultaneous bidders can both "win" the slot.
+--
+--   BEGIN;
+--     SELECT current_bid FROM submissions WHERE id = $1 FOR UPDATE;
+--     -- reject here if $2 <= current_bid
+--     UPDATE submissions
+--        SET current_bid = $2, bidder_name = $3, claimed_at = now()
+--      WHERE id = $1;
+--     INSERT INTO bid_history (id, submission_id, amount, bidder_name,
+--                              previous_bid, stripe_session)
+--     VALUES ($4, $1, $2, $3, $5, $6);
+--   COMMIT;
+--
+-- The stripe_session UNIQUE constraint makes webhook retries idempotent —
+-- Stripe redelivers on any non-2xx, and without it a flaky deploy double-counts.
+-- ---------------------------------------------------------------------------
