@@ -1,6 +1,6 @@
 import type { PoolClient } from 'pg';
 import { getPool, ensureSchema } from './pool';
-import { priceToBeat } from '../types';
+import { manageTokenMatches } from '../manageToken';
 import { LIMITS } from '../validation';
 import type { BidEvent, Category, Submission } from '../types';
 import type { CommitBidInput, CommitBidResult, StoreAdapter } from './adapter';
@@ -141,9 +141,9 @@ export const postgresAdapter: StoreAdapter = {
       let submission: Submission;
       let previousBid: number | null = null;
 
-      if (input.submissionId) {
-        // FOR UPDATE holds the row until COMMIT, so a concurrent bidder blocks
-        // here and then re-reads the raised price instead of overwriting it.
+      if (input.mode === 'topup') {
+        // FOR UPDATE holds the row until COMMIT, so two simultaneous top-ups on
+        // the same card queue instead of one overwriting the other.
         const { rows } = await c.query(
           `SELECT * FROM submissions WHERE id = $1 FOR UPDATE`,
           [input.submissionId],
@@ -151,32 +151,19 @@ export const postgresAdapter: StoreAdapter = {
         const existing = rows[0];
         if (!existing) return { ok: false, error: 'No such case file.' };
 
-        const floor = priceToBeat(Number(existing.current_bid));
-        if (input.amount < floor) {
-          return {
-            ok: false,
-            error: `You need at least $${floor.toLocaleString('en-US')} to take this slot.`,
-          };
+        if (!manageTokenMatches(input.manageToken, existing.manage_token_hash)) {
+          return { ok: false, error: 'That case file is not yours to raise.' };
         }
 
         previousBid = Number(existing.current_bid);
         const updated = await c.query(
           `UPDATE submissions
-              SET current_bid = $2,
-                  bidder_name = $3,
-                  claimed_at = now(),
-                  status = 'active',
-                  owner_id = COALESCE($4, owner_id),
-                  contact_email = COALESCE($5, contact_email)
+              SET current_bid = current_bid + $2,
+                  claimed_at  = now(),
+                  status      = 'active'
             WHERE id = $1
         RETURNING *`,
-          [
-            input.submissionId,
-            input.amount,
-            input.bidderName,
-            input.ownerId ?? null,
-            input.contactEmail ?? null,
-          ],
+          [input.submissionId, input.amount],
         );
         submission = toSubmission(updated.rows[0]);
       } else {
@@ -185,8 +172,8 @@ export const postgresAdapter: StoreAdapter = {
         const inserted = await c.query(
           `INSERT INTO submissions
              (id, title, tagline, url, logo_url, category, current_bid,
-              bidder_name, owner_id, contact_email, status)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'active')
+              bidder_name, owner_id, contact_email, manage_token_hash, status)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'active')
         RETURNING *`,
           [
             newId('sub'),
@@ -199,6 +186,7 @@ export const postgresAdapter: StoreAdapter = {
             input.bidderName,
             input.ownerId ?? null,
             input.contactEmail ?? null,
+            input.manageTokenHash ?? null,
           ],
         );
         submission = toSubmission(inserted.rows[0]);
@@ -220,7 +208,7 @@ export const postgresAdapter: StoreAdapter = {
         ],
       );
 
-      return { ok: true, submission };
+      return { ok: true, submission, newTotal: submission.currentBid };
     });
   },
 };

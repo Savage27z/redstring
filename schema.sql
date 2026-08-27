@@ -20,6 +20,9 @@ CREATE TABLE IF NOT EXISTS submissions (
   owner_id       TEXT,
   -- Contact address from the payment. Never rendered on the board.
   contact_email  TEXT,
+  -- SHA-256 of the token that proves this case file is yours. Only the hash is
+  -- stored, so a database leak does not hand over control of every position.
+  manage_token_hash TEXT,
   claimed_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
   status       TEXT        NOT NULL DEFAULT 'active'
                            CHECK (status IN ('active', 'pending', 'removed'))
@@ -107,7 +110,11 @@ CREATE TABLE IF NOT EXISTS payment_intents (
   tx_hash        TEXT,
   error          TEXT,
   -- what to apply once the money arrives
+  mode           TEXT        NOT NULL DEFAULT 'claim'
+                             CHECK (mode IN ('claim', 'topup')),
   submission_id  TEXT,
+  -- proves a top-up is raising a case the payer actually owns
+  manage_token   TEXT,
   bidder_name    TEXT        NOT NULL DEFAULT 'anon',
   new_case       JSONB,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),

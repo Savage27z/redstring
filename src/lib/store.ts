@@ -3,6 +3,7 @@ import { MIN_BID, priceToBeat } from './types';
 import { memoryAdapter } from './db/memory';
 import { postgresAdapter } from './db/postgres';
 import { validateAmount, normalizeBidderName, validateNewCase } from './validation';
+import { newManageToken, hashManageToken } from './manageToken';
 import type { BoardState, Submission } from './types';
 import type { StoreAdapter } from './db/adapter';
 import type { NewCaseInput } from './validation';
@@ -60,7 +61,11 @@ export async function getSubmission(
 }
 
 export interface PlaceBidInput {
+  /** 'topup' raises a case you already own; 'claim' pins a new one. */
+  mode: 'claim' | 'topup';
   submissionId?: string;
+  /** required for 'topup' */
+  manageToken?: string;
   amount: number;
   bidderName: string;
   newCase?: NewCaseInput;
@@ -75,6 +80,9 @@ export interface PlaceBidResult {
   ok: boolean;
   error?: string;
   submission?: Submission;
+  /** returned exactly once, when a new case is pinned */
+  manageToken?: string;
+  newTotal?: number;
   /** true when this payment had already been applied */
   duplicate?: boolean;
 }
@@ -85,24 +93,34 @@ export interface PlaceBidResult {
  */
 export async function placeBid(input: PlaceBidInput): Promise<PlaceBidResult> {
   // Re-validate at the storage boundary. The API route has already checked
-  // this, but the webhook path reconstructs input from Polar metadata, and
-  // nothing that writes to the board should trust its caller.
-  const floor = input.submissionId
-    ? priceToBeat((await adapter.getSubmission(input.submissionId))?.currentBid ?? 0)
-    : MIN_BID;
+  // this, but nothing that writes to the board should trust its caller.
+  const isTopup = input.mode === 'topup';
 
-  const amount = validateAmount(input.amount, floor);
+  // A top-up only has to clear the site minimum: you are adding to your own
+  // bid, not trying to beat anyone.
+  const amount = validateAmount(input.amount, MIN_BID);
   if (!amount.ok) return { ok: false, error: amount.error };
 
   let newCase: NewCaseInput | undefined;
-  if (!input.submissionId) {
+  let manageToken: string | undefined;
+  let manageTokenHash: string | undefined;
+
+  if (isTopup) {
+    if (!input.submissionId) return { ok: false, error: 'Missing case file.' };
+    if (!input.manageToken) return { ok: false, error: 'That case file is not yours to raise.' };
+  } else {
     const checked = validateNewCase(input.newCase);
     if (!checked.ok) return { ok: false, error: checked.error };
     newCase = checked.value;
+    manageToken = newManageToken();
+    manageTokenHash = hashManageToken(manageToken);
   }
 
   const result = await adapter.commitBid({
+    mode: input.mode,
     submissionId: input.submissionId,
+    manageToken: input.manageToken,
+    manageTokenHash,
     amount: amount.value,
     bidderName: normalizeBidderName(input.bidderName),
     newCase,
@@ -113,7 +131,7 @@ export async function placeBid(input: PlaceBidInput): Promise<PlaceBidResult> {
 
   if (!result.ok) return { ok: false, error: result.error };
 
-  // A replayed webhook must not re-broadcast; the board is already correct.
+  // A replayed payment must not re-broadcast; the board is already correct.
   if (!result.duplicate) {
     bus.publish(await getBoardState());
   }
@@ -122,5 +140,8 @@ export async function placeBid(input: PlaceBidInput): Promise<PlaceBidResult> {
     ok: true,
     submission: result.submission,
     duplicate: result.duplicate,
+    newTotal: result.newTotal,
+    // Handed over exactly once, and only for a brand new case file.
+    manageToken: result.duplicate ? undefined : manageToken,
   };
 }

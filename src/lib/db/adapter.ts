@@ -25,7 +25,17 @@ export interface StoreAdapter {
 }
 
 export interface CommitBidInput {
+  /**
+   * 'claim' pins a new case file. 'topup' raises the bid on one you already
+   * own, proven by the manage token. There is deliberately no mode that takes
+   * over someone else's card.
+   */
+  mode: 'claim' | 'topup';
   submissionId?: string;
+  /** required for 'topup' */
+  manageToken?: string;
+  /** set on 'claim'; the raw token is returned to the payer exactly once */
+  manageTokenHash?: string;
   amount: number;
   bidderName: string;
   newCase?: NewCaseInput;
@@ -48,6 +58,8 @@ export interface CommitBidResult {
   ok: boolean;
   error?: string;
   submission?: Submission;
+  /** the new total after a top-up */
+  newTotal?: number;
   /** true when this exact payment was already applied */
   duplicate?: boolean;
 }

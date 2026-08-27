@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import QRCode from 'qrcode';
 import { placeBid, getSubmission } from '@/lib/store';
-import { MIN_BID, priceToBeat } from '@/lib/types';
+import { MIN_BID } from '@/lib/types';
 import { rateLimit, clientKey } from '@/lib/rateLimit';
 import { chainConfig, enabledChains, toUsdcUnits, baseNumericChainId } from '@/lib/payments/chains';
 import { createIntent, publicIntent } from '@/lib/payments/intentStore';
@@ -38,26 +38,41 @@ export async function POST(req: Request) {
 
   const submissionId =
     typeof body.submissionId === 'string' && body.submissionId ? body.submissionId : undefined;
+  const manageToken = typeof body.manageToken === 'string' ? body.manageToken : undefined;
 
-  // Never trust the client's idea of the price: read the current floor.
-  let floor = MIN_BID;
-  if (submissionId) {
-    const existing = await getSubmission(submissionId);
+  /**
+   * A bid buys size on YOUR OWN case file. There is no way to bid on someone
+   * else's: raising an existing card requires the manage token minted when it
+   * was pinned. Previously any caller could pass a submissionId and take over
+   * a stranger's listing — keeping their title and URL, but replacing the name
+   * on it — which served nobody who paid.
+   */
+  const mode: 'claim' | 'topup' = submissionId ? 'topup' : 'claim';
+
+  if (mode === 'topup') {
+    const existing = await getSubmission(submissionId!);
     if (!existing) {
       return NextResponse.json({ error: 'No such case file.' }, { status: 404 });
     }
-    floor = priceToBeat(existing.currentBid);
+    if (!manageToken) {
+      return NextResponse.json(
+        { error: 'That case file is not yours to raise.' },
+        { status: 403 },
+      );
+    }
   }
 
-  const amount = validateAmount(body.amount, floor);
+  // A top-up adds to what you already hold, so it only has to clear the site
+  // minimum — there is no rival price to beat.
+  const amount = validateAmount(body.amount, MIN_BID);
   if (!amount.ok) {
-    return NextResponse.json({ error: amount.error }, { status: submissionId ? 409 : 400 });
+    return NextResponse.json({ error: amount.error }, { status: 400 });
   }
 
   const bidderName = normalizeBidderName(body.bidderName);
 
   let newCase;
-  if (!submissionId) {
+  if (mode === 'claim') {
     const checked = validateNewCase(body.newCase);
     if (!checked.ok) return NextResponse.json({ error: checked.error }, { status: 400 });
     newCase = checked.value;
@@ -74,9 +89,20 @@ export async function POST(req: Request) {
     if (!devBidsAllowed) {
       return NextResponse.json({ error: 'Payments are not configured.' }, { status: 503 });
     }
-    const result = await placeBid({ submissionId, amount: amount.value, bidderName, newCase });
+    const result = await placeBid({
+      mode,
+      submissionId,
+      manageToken,
+      amount: amount.value,
+      bidderName,
+      newCase,
+    });
     if (!result.ok) return NextResponse.json({ error: result.error }, { status: 409 });
-    return NextResponse.json({ devMode: true, submission: result.submission });
+    return NextResponse.json({
+      devMode: true,
+      submission: result.submission,
+      manageToken: result.manageToken,
+    });
   }
 
   const requested = body.chain as ChainId | undefined;
@@ -100,7 +126,9 @@ export async function POST(req: Request) {
         amountUnits: amountUnits.toString(),
         recipient: config.recipient,
         reference: request.reference,
+        mode,
         submissionId,
+        manageToken,
         bidderName,
         newCase,
       });
@@ -120,7 +148,9 @@ export async function POST(req: Request) {
       amount: amount.value,
       amountUnits: amountUnits.toString(),
       recipient: config.recipient,
+      mode,
       submissionId,
+      manageToken,
       bidderName,
       newCase,
     });

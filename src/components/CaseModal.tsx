@@ -1,6 +1,8 @@
 'use client';
 
+import { useSyncExternalStore } from 'react';
 import Modal from './Modal';
+import { ownsCase } from '@/lib/ownedCases';
 import { CATEGORIES, priceToBeat } from '@/lib/types';
 import type { Submission } from '@/lib/types';
 
@@ -12,15 +14,28 @@ export default function CaseModal({
   submission,
   rank,
   onClose,
-  onOutbid,
+  onRaise,
+  onPinOwn,
 }: {
   submission: Submission | null;
   rank: number;
   onClose: () => void;
-  onOutbid: (s: Submission) => void;
+  /** raise a case this browser owns */
+  onRaise: (s: Submission) => void;
+  /** pin your own case, priced to land above this one */
+  onPinOwn: (beatAmount: number) => void;
 }) {
+  // Ownership lives in localStorage, which the server cannot see. useSyncExternalStore
+  // reads it on the client while returning false during server rendering, so the
+  // two agree on first paint without a setState-in-effect round trip.
+  const mine = useSyncExternalStore(
+    () => () => {},
+    () => (submission ? ownsCase(submission.id) : false),
+    () => false,
+  );
+
   if (!submission) return null;
-  const floor = priceToBeat(submission.currentBid);
+  const beat = priceToBeat(submission.currentBid);
   const categoryLabel =
     CATEGORIES.find((c) => c.value === submission.category)?.label ?? 'Unclassified';
 
@@ -107,13 +122,23 @@ export default function CaseModal({
           </dl>
 
           <div className="mt-5 flex flex-col gap-2 sm:flex-row">
-            <button
-              onClick={() => onOutbid(submission)}
-              className="flex-1 px-4 py-3 font-[family-name:var(--font-case)] text-[13px] uppercase tracking-[0.14em] text-[color:var(--color-paper)] shadow-[0_4px_0_#7d0d13] transition-transform active:translate-y-[2px] active:shadow-[0_2px_0_#7d0d13]"
-              style={{ background: 'var(--color-string)' }}
-            >
-              Outbid · from {money(floor)}
-            </button>
+            {mine ? (
+              <button
+                onClick={() => onRaise(submission)}
+                className="flex-1 px-4 py-3 font-[family-name:var(--font-case)] text-[13px] uppercase tracking-[0.14em] text-[color:var(--color-paper)] shadow-[0_4px_0_#7d0d13] transition-transform active:translate-y-[2px] active:shadow-[0_2px_0_#7d0d13]"
+                style={{ background: 'var(--color-string)' }}
+              >
+                Add to your bid
+              </button>
+            ) : (
+              <button
+                onClick={() => onPinOwn(beat)}
+                className="flex-1 px-4 py-3 font-[family-name:var(--font-case)] text-[13px] uppercase tracking-[0.14em] text-[color:var(--color-paper)] shadow-[0_4px_0_#7d0d13] transition-transform active:translate-y-[2px] active:shadow-[0_2px_0_#7d0d13]"
+                style={{ background: 'var(--color-string)' }}
+              >
+                Beat it · from {money(beat)}
+              </button>
+            )}
             <button
               onClick={onClose}
               className="px-4 py-3 font-[family-name:var(--font-case)] text-[13px] uppercase tracking-[0.14em] text-[color:var(--color-ink-soft)] ring-1 ring-inset ring-[rgba(90,66,36,0.45)] transition-colors hover:bg-[rgba(90,66,36,0.1)]"

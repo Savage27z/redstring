@@ -31,7 +31,11 @@ export interface PaymentIntent {
   expiresAt: string;
   txHash?: string;
   error?: string;
+  /** 'topup' raises a case the payer owns; 'claim' pins a new one. */
+  mode: 'claim' | 'topup';
   submissionId?: string;
+  /** held server-side for a top-up, never sent back to the browser */
+  manageToken?: string;
   bidderName: string;
   newCase?: NewCaseInput;
 }
@@ -86,7 +90,9 @@ function fromRow(r: any): PaymentIntent {
     expiresAt: new Date(r.expires_at).toISOString(),
     txHash: r.tx_hash ?? undefined,
     error: r.error ?? undefined,
+    mode: r.mode ?? 'claim',
     submissionId: r.submission_id ?? undefined,
+    manageToken: r.manage_token ?? undefined,
     bidderName: r.bidder_name ?? 'anon',
     newCase: r.new_case ?? undefined,
   };
@@ -114,8 +120,9 @@ export async function createIntent(input: NewIntent): Promise<PaymentIntent> {
   await (await pool()).query(
     `INSERT INTO payment_intents
        (id, chain, amount, amount_units, recipient, reference, status,
-        submission_id, bidder_name, new_case, created_at, expires_at)
-     VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8,$9,$10,$11)`,
+        mode, submission_id, manage_token, bidder_name, new_case,
+        created_at, expires_at)
+     VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8,$9,$10,$11,$12,$13)`,
     [
       intent.id,
       intent.chain,
@@ -123,7 +130,9 @@ export async function createIntent(input: NewIntent): Promise<PaymentIntent> {
       intent.amountUnits,
       intent.recipient,
       intent.reference ?? null,
+      intent.mode,
       intent.submissionId ?? null,
+      intent.manageToken ?? null,
       intent.bidderName,
       intent.newCase ? JSON.stringify(intent.newCase) : null,
       intent.createdAt,

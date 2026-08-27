@@ -115,6 +115,7 @@ export async function POST(req: Request) {
     // The order id makes this idempotent: Polar retries on any non-2xx and can
     // deliver the same event more than once.
     const result = await placeBid({
+      mode: 'claim',
       submissionId: submissionId ?? undefined,
       amount,
       bidderName: asString(md.bidderName) ?? 'anon',

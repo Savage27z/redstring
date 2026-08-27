@@ -1,5 +1,5 @@
 import { MOCK_SUBMISSIONS, MOCK_BIDS } from '../mock';
-import { priceToBeat } from '../types';
+import { manageTokenMatches } from '../manageToken';
 import { LIMITS } from '../validation';
 import type { BidEvent, Submission } from '../types';
 import type { CommitBidInput, CommitBidResult, StoreAdapter } from './adapter';
@@ -24,6 +24,8 @@ interface Db {
   visitors: number;
   /** submission id -> payment identity; deliberately not part of BoardState */
   owners: Map<string, { ownerId: string | null; contactEmail: string | null }>;
+  /** submission id -> SHA-256 of the manage token that controls it */
+  manage: Map<string, string>;
   /** paymentRef -> submission id, for idempotent replays */
   applied: Map<string, string>;
 }
@@ -38,6 +40,7 @@ function db(): Db {
       visitors: 0,
       applied: new Map(),
       owners: new Map(),
+      manage: new Map(),
     };
   }
   return globalForDb.__redstringDb;
@@ -104,21 +107,19 @@ export const memoryAdapter: StoreAdapter = {
     let submission: Submission;
     let previousBid: number | null = null;
 
-    if (input.submissionId) {
+    if (input.mode === 'topup') {
       const existing = d.submissions.find((s) => s.id === input.submissionId);
       if (!existing) return { ok: false, error: 'No such case file.' };
 
-      const floor = priceToBeat(existing.currentBid);
-      if (input.amount < floor) {
-        return {
-          ok: false,
-          error: `You need at least $${floor.toLocaleString('en-US')} to take this slot.`,
-        };
+      // Ownership is the whole guard. Without it anyone could raise (and
+      // rename) a card they had nothing to do with.
+      if (!manageTokenMatches(input.manageToken, d.manage.get(existing.id))) {
+        return { ok: false, error: 'That case file is not yours to raise.' };
       }
 
       previousBid = existing.currentBid;
-      existing.currentBid = input.amount;
-      existing.bidderName = input.bidderName;
+      // A top-up ADDS to what you already hold, rather than replacing it.
+      existing.currentBid = existing.currentBid + input.amount;
       existing.claimedAt = new Date().toISOString();
       existing.status = 'active';
       submission = existing;
@@ -137,6 +138,7 @@ export const memoryAdapter: StoreAdapter = {
         status: 'active',
       };
       d.submissions.push(submission);
+      if (input.manageTokenHash) d.manage.set(submission.id, input.manageTokenHash);
     }
 
     d.bids.push({
@@ -156,6 +158,6 @@ export const memoryAdapter: StoreAdapter = {
       });
     }
 
-    return { ok: true, submission: { ...submission } };
+    return { ok: true, submission: { ...submission }, newTotal: submission.currentBid };
   },
 };

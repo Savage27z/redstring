@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { rememberCase } from '@/lib/ownedCases';
 
 /**
  * The pay-with-USDC step.
@@ -144,6 +145,10 @@ export default function PaymentStep({
         const next = data.intent?.status as PaymentIntentView['status'] | undefined;
         if (next) setStatus(next);
         if (data.intent?.error) setError(data.intent.error);
+        // Handed over exactly once, on the response that settles the payment.
+        if (data.submissionId && data.manageToken) {
+          rememberCase(data.submissionId, data.manageToken);
+        }
         if (next === 'confirmed') finish();
       } catch {
         /* transient; the next tick retries */
@@ -172,6 +177,9 @@ export default function PaymentStep({
       const data = await res.json();
       if (data.intent?.status) setStatus(data.intent.status);
       if (data.error) setError(data.error);
+      if (data.submissionId && data.manageToken) {
+        rememberCase(data.submissionId, data.manageToken);
+      }
       if (data.intent?.status === 'confirmed') finish();
       else if (!data.error) setError('Not confirmed yet — this will settle as soon as it is.');
     } catch {

@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import Modal from './Modal';
 import PaymentStep from './PaymentStep';
 import type { PaymentPayload } from './PaymentStep';
-import { CATEGORIES, MIN_BID, priceToBeat } from '@/lib/types';
+import { CATEGORIES, MIN_BID } from '@/lib/types';
+import { manageTokenFor, rememberCase } from '@/lib/ownedCases';
 import type { Category, Submission } from '@/lib/types';
 
 function money(n: number): string {
@@ -24,20 +25,24 @@ const label =
 export default function BidModal({
   open,
   target,
+  seedAmount,
   minimum,
   onClose,
   onSubmitted,
 }: {
   open: boolean;
+  /** set when raising a case this browser owns */
   target: Submission | null;
+  /** pre-fills the amount, e.g. when deliberately landing above another card */
+  seedAmount?: number;
   /** floor for a brand-new pin (usually MIN_BID) */
   minimum: number;
   onClose: () => void;
   onSubmitted: () => void;
 }) {
-  const floor = target ? priceToBeat(target.currentBid) : Math.max(MIN_BID, minimum);
+  const floor = Math.max(MIN_BID, minimum);
 
-  const [amount, setAmount] = useState<string>(String(floor));
+  const [amount, setAmount] = useState<string>(String(seedAmount ?? floor));
   const [bidderName, setBidderName] = useState('');
   const [title, setTitle] = useState('');
   const [tagline, setTagline] = useState('');
@@ -70,10 +75,11 @@ export default function BidModal({
   }, [open]);
 
   // Re-seed the amount whenever the modal is opened against a new target.
-  const [seenFloor, setSeenFloor] = useState(floor);
-  if (open && seenFloor !== floor) {
-    setSeenFloor(floor);
-    setAmount(String(floor));
+  const wanted = seedAmount ?? floor;
+  const [seenWanted, setSeenWanted] = useState(wanted);
+  if (open && seenWanted !== wanted) {
+    setSeenWanted(wanted);
+    setAmount(String(wanted));
     setError(null);
   }
 
@@ -98,6 +104,8 @@ export default function BidModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           submissionId: target?.id,
+          // Proof this browser pinned the case it is raising.
+          manageToken: target ? manageTokenFor(target.id) : undefined,
           amount: value,
           bidderName: bidderName.trim() || 'anon',
           chain,
@@ -122,6 +130,10 @@ export default function BidModal({
       if (data.intent) {
         setPayment(data as PaymentPayload);
         return;
+      }
+
+      if (data.submission?.id && data.manageToken) {
+        rememberCase(data.submission.id, data.manageToken);
       }
 
       onSubmitted();
@@ -183,17 +195,17 @@ export default function BidModal({
       >
         <div className="border-b-2 border-dashed border-[rgba(90,66,36,0.4)] p-5 pb-4">
           <div className="font-[family-name:var(--font-case)] text-[10px] uppercase tracking-[0.24em] text-[color:var(--color-ink-faint)]">
-            {target ? 'Contest the claim' : 'New case file'}
+            {target ? 'Raise your bid' : 'New case file'}
           </div>
           <h2
             id="bid-title"
             className="mt-1 font-[family-name:var(--font-case)] text-3xl text-[color:var(--color-ink)]"
           >
-            {target ? `Outbid ${target.title}` : 'Pin your case'}
+            {target ? `Add to ${target.title}` : 'Pin your case'}
           </h2>
           <p className="mt-1.5 text-[13px] text-[color:var(--color-ink-soft)]">
             {target
-              ? `${target.bidderName} holds this slot at ${money(target.currentBid)}. Beat it and the board reflows around you.`
+              ? `You are at ${money(target.currentBid)}. Whatever you add goes on top, and the board reflows around you.`
               : `Bids are area. Pay more, get a bigger case file. Minimum ${money(floor)}.`}
           </p>
         </div>
@@ -288,7 +300,7 @@ export default function BidModal({
 
           <div>
             <label className={label} htmlFor="f-amount">
-              Bid — minimum {money(floor)}
+              {target ? 'Add to your bid' : `Bid — minimum ${money(floor)}`}
             </label>
             <div className="relative">
               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-[family-name:var(--font-case)] text-xl text-[color:var(--color-string)]">
@@ -358,7 +370,7 @@ export default function BidModal({
             className="flex-1 px-4 py-3 font-[family-name:var(--font-case)] text-[13px] uppercase tracking-[0.14em] text-[color:var(--color-paper)] shadow-[0_4px_0_#7d0d13] transition-transform active:translate-y-[2px] active:shadow-[0_2px_0_#7d0d13] disabled:opacity-60"
             style={{ background: 'var(--color-string)' }}
           >
-            {busy ? 'Opening payment…' : target ? 'Take the slot' : 'Pin it to the board'}
+            {busy ? 'Opening payment…' : target ? 'Add it' : 'Pin it to the board'}
           </button>
           <button
             type="button"

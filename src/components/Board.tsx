@@ -27,6 +27,7 @@ export default function Board({ initial }: { initial: BoardState }) {
   const [openCase, setOpenCase] = useState<Submission | null>(null);
   const [bidTarget, setBidTarget] = useState<Submission | null>(null);
   const [bidOpen, setBidOpen] = useState(false);
+  const [seedAmount, setSeedAmount] = useState<number | undefined>(undefined);
 
   /* ---- realtime: SSE, with polling fallback ---------------------------- */
   useEffect(() => {
@@ -106,13 +107,23 @@ export default function Board({ initial }: { initial: BoardState }) {
     }
   }, []);
 
-  const openBid = useCallback((s: Submission | null) => {
-    setBidTarget(s);
+  // Pin a brand new case. `startAt` seeds the amount when you are deliberately
+  // trying to land above an existing card.
+  const openNewCase = useCallback((startAt?: number) => {
+    setBidTarget(null);
+    setSeedAmount(startAt);
     setBidOpen(true);
     setOpenCase(null);
   }, []);
 
-  const leader = state.submissions[0] ?? null;
+  // Raise a case this browser already owns.
+  const openRaise = useCallback((s: Submission) => {
+    setBidTarget(s);
+    setSeedAmount(undefined);
+    setBidOpen(true);
+    setOpenCase(null);
+  }, []);
+
   const submissions = useMemo(() => state.submissions, [state.submissions]);
 
   return (
@@ -125,8 +136,8 @@ export default function Board({ initial }: { initial: BoardState }) {
     <div className="flex min-h-[100dvh] flex-col bg-[#2b2b2e] pb-14 sm:h-[100dvh] sm:min-h-0 sm:overflow-hidden sm:pb-0">
       <StatsBar
         state={state}
-        onPin={() => openBid(null)}
-        onTakeNumberOne={() => openBid(leader)}
+        onPin={() => openNewCase()}
+        onTakeNumberOne={() => openNewCase(state.stats.priceToTakeNumberOne)}
       />
 
       {/* Sized to the board's own proportions on mobile (the framed panel is
@@ -155,7 +166,7 @@ export default function Board({ initial }: { initial: BoardState }) {
                 it until someone pays more.
               </p>
               <button
-                onClick={() => openBid(null)}
+                onClick={() => openNewCase()}
                 className="mt-5 px-5 py-3 font-[family-name:var(--font-case)] text-[12px] uppercase tracking-[0.14em] text-[color:var(--color-paper)] shadow-[0_4px_0_#7d0d13] transition-transform active:translate-y-[2px]"
                 style={{ background: 'var(--color-string)' }}
               >
@@ -217,7 +228,7 @@ export default function Board({ initial }: { initial: BoardState }) {
       </ol>
 
       <button
-        onClick={() => openBid(null)}
+        onClick={() => openNewCase()}
         className="sticky bottom-0 z-20 w-full px-4 py-4 font-[family-name:var(--font-case)] text-[13px] uppercase tracking-[0.14em] text-[color:var(--color-paper)] sm:hidden"
         style={{ background: 'var(--color-string)' }}
       >
@@ -228,12 +239,14 @@ export default function Board({ initial }: { initial: BoardState }) {
         submission={openCase}
         rank={openCase ? rankOf(openCase.id) : 0}
         onClose={() => setOpenCase(null)}
-        onOutbid={(s) => openBid(s)}
+        onRaise={openRaise}
+        onPinOwn={(beatAmount) => openNewCase(beatAmount)}
       />
 
       <BidModal
         open={bidOpen}
         target={bidTarget}
+        seedAmount={seedAmount}
         minimum={state.stats.minimumBid}
         onClose={() => setBidOpen(false)}
         onSubmitted={refresh}

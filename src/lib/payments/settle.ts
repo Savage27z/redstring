@@ -19,12 +19,17 @@ export interface SettleResult {
   intent: ReturnType<typeof publicIntent>;
   /** set when this call is what actually placed the bid */
   placed?: boolean;
+  submissionId?: string;
+  /** returned exactly once, when a new case file is pinned */
+  manageToken?: string;
   error?: string;
 }
 
 async function applyBid(intent: PaymentIntent, txHash: string): Promise<SettleResult> {
   const result = await placeBid({
+    mode: intent.mode,
     submissionId: intent.submissionId,
+    manageToken: intent.manageToken,
     amount: intent.amount,
     bidderName: intent.bidderName,
     newCase: intent.newCase,
@@ -51,7 +56,14 @@ async function applyBid(intent: PaymentIntent, txHash: string): Promise<SettleRe
   }
 
   const updated = (await updateIntent(intent.id, { status: 'confirmed', txHash })) ?? intent;
-  return { intent: publicIntent(updated), placed: !result.duplicate };
+  return {
+    intent: publicIntent(updated),
+    placed: !result.duplicate,
+    submissionId: result.submission?.id,
+    // Handed to the payer's browser exactly once, so they can raise this case
+    // later without an account.
+    manageToken: result.manageToken,
+  };
 }
 
 /**
@@ -130,6 +142,7 @@ function emptyIntent(id: string): PaymentIntent {
     status: 'failed',
     createdAt: new Date().toISOString(),
     expiresAt: new Date().toISOString(),
+    mode: 'claim',
     bidderName: 'anon',
   };
 }
