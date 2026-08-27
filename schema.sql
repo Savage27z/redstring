@@ -128,3 +128,27 @@ CREATE TABLE IF NOT EXISTS payment_intents (
 CREATE INDEX IF NOT EXISTS payment_intents_open_idx
   ON payment_intents (status, expires_at)
   WHERE status = 'pending';
+
+
+-- ---------------------------------------------------------------------------
+-- Additive migrations.
+--
+-- CREATE TABLE IF NOT EXISTS builds a fresh database correctly but does nothing
+-- to one that already exists, so every column added after the first deploy has
+-- to be applied explicitly. ADD COLUMN IF NOT EXISTS keeps this safe to run on
+-- every boot, on a new database and an old one alike.
+--
+-- Add new columns to the CREATE above AND to this list, or existing deployments
+-- will 500 on the first query that references them.
+-- ---------------------------------------------------------------------------
+
+ALTER TABLE submissions ADD COLUMN IF NOT EXISTS owner_id          TEXT;
+ALTER TABLE submissions ADD COLUMN IF NOT EXISTS contact_email     TEXT;
+ALTER TABLE submissions ADD COLUMN IF NOT EXISTS manage_token_hash TEXT;
+ALTER TABLE submissions ADD COLUMN IF NOT EXISTS clicks            INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE bid_history ADD COLUMN IF NOT EXISTS owner_id    TEXT;
+ALTER TABLE bid_history ADD COLUMN IF NOT EXISTS payment_ref TEXT;
+
+ALTER TABLE payment_intents ADD COLUMN IF NOT EXISTS mode         TEXT NOT NULL DEFAULT 'claim';
+ALTER TABLE payment_intents ADD COLUMN IF NOT EXISTS manage_token TEXT;
