@@ -18,8 +18,13 @@ export const alt = 'redstring.lol — the board decides';
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 
-// Fresh enough to reflect a changing board, cheap enough not to redraw per hit.
-export const revalidate = 60;
+/**
+ * Must be dynamic. Left to itself Next prerenders this at build time, when the
+ * database is not reachable — the catch below then quietly served an "empty
+ * board" preview forever, which is worse than no image at all. Previews are
+ * fetched rarely and crawlers cache them, so rendering per request is cheap.
+ */
+export const dynamic = 'force-dynamic';
 
 const CORK = '#c1874a';
 const INK = '#241608';
@@ -44,8 +49,11 @@ export default async function Image() {
     raised = board.stats.totalRaised;
     cases = board.stats.totalCases;
     takeTop = board.stats.priceToTakeNumberOne;
-  } catch {
-    // A preview must never fail because the database is briefly unreachable.
+  } catch (err) {
+    // A preview must never fail because the database is briefly unreachable,
+    // but it must not fail silently either — an empty-looking board is a
+    // symptom worth seeing in the logs.
+    console.error('[og] could not read board state', err);
   }
 
   return new ImageResponse(
