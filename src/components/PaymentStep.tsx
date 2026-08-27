@@ -230,10 +230,11 @@ export default function PaymentStep({
         <p className="font-[family-name:var(--font-case)] text-[10px] uppercase tracking-[0.18em] text-[color:var(--color-ink-faint)]">
           Or send it yourself
         </p>
-        <Copyable value={payload.intent.recipient} title="Send USDC to" />
-        {!isSolana && payload.base && (
-          <Copyable value={payload.base.token} title="USDC contract (Base)" />
-        )}
+        {/* Only ever ONE address here. Showing the USDC token contract beside
+            the recipient invited sending funds to the contract itself, which
+            burns them — and nobody needs it: wallets and exchanges already list
+            USDC by name. */}
+        <Copyable value={payload.intent.recipient} title={`Send USDC to (${isSolana ? 'Solana' : 'Base'})`} />
 
         {
           <div>
