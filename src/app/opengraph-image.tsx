@@ -64,6 +64,7 @@ export default async function Image() {
           height: '100%',
           display: 'flex',
           flexDirection: 'column',
+          justifyContent: 'space-between',
           backgroundColor: CORK,
           // Cork tooth, faked with layered gradients since Satori has no filters.
           backgroundImage:
@@ -93,8 +94,8 @@ export default async function Image() {
         </div>
 
         {leader ? (
-          <div style={{ display: 'flex', flexDirection: 'column', marginTop: 34, flex: 1 }}>
-            <div style={{ fontSize: 22, color: 'rgba(36,22,8,0.65)', letterSpacing: 4 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, justifyContent: 'center' }}>
+            <div style={{ display: 'flex', fontSize: 20, color: 'rgba(36,22,8,0.7)', letterSpacing: 4, marginBottom: 10 }}>
               CURRENTLY #1
             </div>
             {/* the leader, rendered as its case file */}
@@ -102,10 +103,9 @@ export default async function Image() {
               style={{
                 display: 'flex',
                 flexDirection: 'column',
-                marginTop: 14,
                 backgroundColor: PAPER,
-                padding: 12,
-                width: 760,
+                padding: 11,
+                width: 720,
                 boxShadow: '0 14px 30px rgba(24,14,4,0.45)',
               }}
             >
@@ -114,18 +114,18 @@ export default async function Image() {
                   display: 'flex',
                   flexDirection: 'column',
                   backgroundColor: GREEN,
-                  padding: '26px 30px',
+                  padding: '20px 26px',
                 }}
               >
-                <div style={{ fontSize: 62, color: '#ffffff', fontWeight: 700 }}>
+                <div style={{ display: 'flex', fontSize: 52, color: '#ffffff', fontWeight: 700 }}>
                   {leader.title.slice(0, 26)}
                 </div>
                 {leader.tagline ? (
-                  <div style={{ fontSize: 26, color: 'rgba(255,255,255,0.78)', marginTop: 8 }}>
+                  <div style={{ display: 'flex', fontSize: 24, color: 'rgba(255,255,255,0.78)', marginTop: 6 }}>
                     {leader.tagline.slice(0, 64)}
                   </div>
                 ) : null}
-                <div style={{ fontSize: 54, color: '#ffffff', marginTop: 18 }}>
+                <div style={{ display: 'flex', fontSize: 46, color: '#ffffff', marginTop: 14 }}>
                   {money(leader.bid)}
                 </div>
               </div>
@@ -136,12 +136,14 @@ export default async function Image() {
             style={{
               display: 'flex',
               flexDirection: 'column',
-              marginTop: 40,
-              flex: 1,
+              flexGrow: 1,
+              justifyContent: 'center',
             }}
           >
-            <div style={{ fontSize: 52, color: INK, fontWeight: 700 }}>The board is empty</div>
-            <div style={{ fontSize: 28, color: 'rgba(36,22,8,0.65)', marginTop: 12 }}>
+            <div style={{ display: 'flex', fontSize: 52, color: INK, fontWeight: 700 }}>
+              The board is empty
+            </div>
+            <div style={{ display: 'flex', fontSize: 28, color: 'rgba(36,22,8,0.65)', marginTop: 12 }}>
               The first bid takes the whole wall.
             </div>
           </div>
@@ -155,11 +157,12 @@ export default async function Image() {
             ['TAKE #1', money(takeTop)],
           ].map(([label, value]) => (
             <div key={label} style={{ display: 'flex', flexDirection: 'column' }}>
-              <div style={{ fontSize: 20, color: 'rgba(36,22,8,0.55)', letterSpacing: 3 }}>
+              <div style={{ display: 'flex', fontSize: 20, color: 'rgba(36,22,8,0.55)', letterSpacing: 3 }}>
                 {label}
               </div>
               <div
                 style={{
+                  display: 'flex',
                   fontSize: 44,
                   color: label === 'TAKE #1' ? RED : INK,
                   fontWeight: 700,
