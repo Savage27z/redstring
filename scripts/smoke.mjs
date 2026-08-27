@@ -50,6 +50,13 @@ async function board() {
   return res.json();
 }
 
+/** Checkout allows 10 calls a minute; later sections need a fresh window. */
+const waitForRateWindow = async (why) => {
+  console.log(`      (waiting 65s for the rate-limit window — ${why})`);
+  await new Promise((r) => setTimeout(r, 65_000));
+};
+
+
 console.log(`--- validation (${BASE})`);
 
 {
@@ -225,6 +232,68 @@ console.log('\n--- crypto payment rails');
   check('unknown payment id is rejected', !!unknown.error, JSON.stringify(unknown));
 }
 
+
+await waitForRateWindow('ownership checks need checkout calls');
+
+console.log('\n--- ownership: a card can only be raised by whoever pinned it');
+{
+  const b = await board();
+  const victim = b.submissions[0];
+  if (!victim) {
+    console.log('skip  board is empty, nothing to attempt taking over');
+  } else {
+    const before = victim.currentBid;
+
+    const noToken = await post('/api/checkout', { submissionId: victim.id, amount: 50 });
+    check(
+      'raising another persons card without a token is refused',
+      noToken.status === 403,
+      `got ${noToken.status} ${JSON.stringify(noToken.json)}`,
+    );
+
+    await post('/api/checkout', {
+      submissionId: victim.id,
+      amount: 50,
+      manageToken: 'f'.repeat(48),
+    });
+
+    const after = await board();
+    const same = after.submissions.find((s) => s.id === victim.id);
+    check(
+      'a forged manage token changes nothing',
+      Boolean(same) && same.currentBid === before,
+      `bid moved ${before} -> ${same && same.currentBid}`,
+    );
+    check(
+      'a forged manage token cannot rename the card',
+      Boolean(same) && same.bidderName === victim.bidderName,
+    );
+  }
+}
+
+console.log('\n--- clicks');
+{
+  const b = await board();
+  const target = b.submissions[0];
+  if (!target) {
+    console.log('skip  board is empty');
+  } else {
+    const before = target.clicks;
+    const r = await post(`/api/cases/${target.id}/click`, {});
+    check('clicking a case is recorded', r.json?.ok === true, JSON.stringify(r.json));
+    const after = await board();
+    const now = after.submissions.find((s) => s.id === target.id);
+    check(
+      'the count went up',
+      Boolean(now) && now.clicks >= before,
+      `${before} -> ${now && now.clicks}`,
+    );
+    check('total clicks is reported', typeof after.stats.totalClicks === 'number');
+
+    const missing = await post('/api/cases/does_not_exist/click', {});
+    check('clicking an unknown case 404s', missing.status === 404, `got ${missing.status}`);
+  }
+}
 
 console.log('\n--- rate limiting');
 {
