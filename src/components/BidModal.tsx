@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Modal from './Modal';
 import PaymentStep from './PaymentStep';
 import type { PaymentPayload } from './PaymentStep';
-import { CATEGORIES, MIN_BID } from '@/lib/types';
+import { CATEGORIES, MIN_BID, OUTBID_INCREMENT } from '@/lib/types';
 import { manageTokenFor, rememberCase } from '@/lib/ownedCases';
 import type { Category, Submission } from '@/lib/types';
 
@@ -27,6 +27,7 @@ export default function BidModal({
   target,
   seedAmount,
   minimum,
+  topBid,
   onClose,
   onSubmitted,
 }: {
@@ -35,6 +36,8 @@ export default function BidModal({
   target: Submission | null;
   /** pre-fills the amount, e.g. when deliberately landing above another card */
   seedAmount?: number;
+  /** the current #1 bid, so a raise can show what it takes to pass it */
+  topBid: number;
   /** floor for a brand-new pin (usually MIN_BID) */
   minimum: number;
   onClose: () => void;
@@ -149,7 +152,25 @@ export default function BidModal({
     }
   }
 
-  const quick = [floor, Math.ceil(floor * 1.5), floor * 2, floor * 5];
+  // What it would take to go past the current leader, from where you already
+  // are. This is the number someone raising a bid is actually trying to work
+  // out, so it should not be left as mental arithmetic.
+  const toPassLeader =
+    target && topBid > target.currentBid
+      ? Math.max(floor, topBid + OUTBID_INCREMENT - target.currentBid)
+      : null;
+  const alreadyLeading = Boolean(target && target.currentBid >= topBid);
+
+  // Deduped: the amount that takes #1 often IS the minimum, and offering the
+  // same number twice looks broken (and collides as a React key).
+  const quick = Array.from(
+    new Set(
+      (target
+        ? [toPassLeader, floor, floor * 5, floor * 10]
+        : [floor, Math.ceil(floor * 1.5), floor * 2, floor * 5]
+      ).filter((n): n is number => typeof n === 'number' && n > 0),
+    ),
+  ).sort((a, b) => a - b);
 
   if (payment) {
     return (
@@ -205,7 +226,11 @@ export default function BidModal({
           </h2>
           <p className="mt-1.5 text-[13px] text-[color:var(--color-ink-soft)]">
             {target
-              ? `You are at ${money(target.currentBid)}. Whatever you add goes on top, and the board reflows around you.`
+              ? alreadyLeading
+                ? `You are at ${money(target.currentBid)} and already hold #1. Anything you add widens the gap.`
+                : `You are at ${money(target.currentBid)}. #1 is at ${money(topBid)} — add ${money(
+                    toPassLeader ?? floor,
+                  )} to take the top spot.`
               : `Bids are area. Pay more, get a bigger case file. Minimum ${money(floor)}.`}
           </p>
         </div>
@@ -320,10 +345,11 @@ export default function BidModal({
                 <button
                   key={q}
                   type="button"
+                  title={q === toPassLeader ? 'Enough to take #1' : undefined}
                   onClick={() => setAmount(String(q))}
                   className="px-2.5 py-1 font-[family-name:var(--font-case)] text-[12px] text-[color:var(--color-ink-soft)] ring-1 ring-inset ring-[rgba(90,66,36,0.4)] transition-colors hover:bg-[rgba(179,18,27,0.1)] hover:text-[color:var(--color-string)]"
                 >
-                  {money(q)}
+                  {q === toPassLeader ? `${money(q)} · takes #1` : money(q)}
                 </button>
               ))}
             </div>

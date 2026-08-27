@@ -73,6 +73,7 @@ export default function StatsBar({
           <Stat label="Raised" value={money(stats.totalRaised)} />
           <Stat label="Cases" value={String(stats.totalCases)} />
           <Stat label="Watching" value={stats.visitors.toLocaleString('en-US')} />
+          <Stat label="Clicks" value={stats.totalClicks.toLocaleString('en-US')} />
           <Stat
             label={leader ? `#1 · ${leader.title}` : '#1'}
             value={money(stats.topBid)}
@@ -107,6 +108,9 @@ export default function StatsBar({
         </div>
         <div className="flex-1">
           <Stat label="Cases" value={String(stats.totalCases)} />
+        </div>
+        <div className="flex-1">
+          <Stat label="Clicks" value={stats.totalClicks.toLocaleString('en-US')} />
         </div>
         <button onClick={onTakeNumberOne} className="flex-[1.5] text-left">
           <Stat

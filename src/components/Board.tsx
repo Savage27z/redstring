@@ -89,6 +89,30 @@ export default function Board({ initial }: { initial: BoardState }) {
     };
   }, []);
 
+  /**
+   * Opening a case counts as a click — that is the thing a buyer is paying for.
+   * The count is patched into local state rather than broadcast, so looking at a
+   * card never reflows the board for everyone else.
+   */
+  const openCaseFile = useCallback((s: Submission) => {
+    setOpenCase(s);
+    fetch(`/api/cases/${s.id}/click`, { method: 'POST' })
+      .then((r) => r.json())
+      .then((d) => {
+        if (typeof d?.clicks !== 'number') return;
+        setState((prev) => ({
+          ...prev,
+          submissions: prev.submissions.map((x) =>
+            x.id === s.id ? { ...x, clicks: d.clicks } : x,
+          ),
+          stats: { ...prev.stats, totalClicks: prev.stats.totalClicks + (d.counted ? 1 : 0) },
+        }));
+      })
+      .catch(() => {
+        /* a lost click is not worth surfacing */
+      });
+  }, []);
+
   // Rank is just bid order — no need to run the whole layout to find it.
   const rankOf = useCallback(
     (id: string) =>
@@ -150,7 +174,7 @@ export default function Board({ initial }: { initial: BoardState }) {
           submissions={submissions}
           hovered={hovered}
           onHover={setHovered}
-          onOpen={setOpenCase}
+          onOpen={openCaseFile}
         />
 
         {/* An empty board is the normal state before the first bid, so it has
@@ -199,7 +223,7 @@ export default function Board({ initial }: { initial: BoardState }) {
         {state.submissions.map((s, i) => (
           <li key={s.id}>
             <button
-              onClick={() => setOpenCase(s)}
+              onClick={() => openCaseFile(s)}
               className="flex w-full items-center gap-3 border-b border-[rgba(235,235,240,0.09)] px-4 py-3 text-left active:bg-[rgba(235,235,240,0.06)]"
             >
               <span
@@ -217,6 +241,9 @@ export default function Board({ initial }: { initial: BoardState }) {
                 </span>
                 <span className="block truncate text-[12px] text-[rgba(239,230,210,0.45)]">
                   {s.tagline || s.url.replace(/^https?:\/\//, '')}
+                </span>
+                <span className="mt-0.5 block font-[family-name:var(--font-case)] text-[10px] uppercase tracking-[0.14em] text-[rgba(239,230,210,0.32)]">
+                  {s.clicks.toLocaleString('en-US')} clicks
                 </span>
               </span>
               <span className="shrink-0 font-[family-name:var(--font-case)] text-[15px] text-[color:var(--color-string-glow)]">
@@ -248,6 +275,7 @@ export default function Board({ initial }: { initial: BoardState }) {
         target={bidTarget}
         seedAmount={seedAmount}
         minimum={state.stats.minimumBid}
+        topBid={state.stats.topBid}
         onClose={() => setBidOpen(false)}
         onSubmitted={refresh}
       />

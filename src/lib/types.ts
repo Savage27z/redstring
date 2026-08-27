@@ -28,6 +28,8 @@ export interface Submission {
   currentBid: number;
   bidderName: string;
   claimedAt: string; // ISO
+  /** how many times this case file has been opened */
+  clicks: number;
   status: 'active' | 'pending';
 }
 
@@ -51,6 +53,7 @@ export interface BoardState {
     priceToTakeNumberOne: number;
     minimumBid: number;
     visitors: number;
+    totalClicks: number;
   };
 }
 

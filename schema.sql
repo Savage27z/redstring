@@ -23,6 +23,9 @@ CREATE TABLE IF NOT EXISTS submissions (
   -- SHA-256 of the token that proves this case file is yours. Only the hash is
   -- stored, so a database leak does not hand over control of every position.
   manage_token_hash TEXT,
+  -- How many times this case file has been opened. What a buyer is actually
+  -- paying for, so it is worth showing them.
+  clicks         INTEGER     NOT NULL DEFAULT 0,
   claimed_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
   status       TEXT        NOT NULL DEFAULT 'active'
                            CHECK (status IN ('active', 'pending', 'removed'))

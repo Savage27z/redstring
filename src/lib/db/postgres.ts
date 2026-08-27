@@ -32,6 +32,7 @@ function toSubmission(r: any): Submission {
     currentBid: Number(r.current_bid),
     bidderName: r.bidder_name ?? 'anon',
     claimedAt: new Date(r.claimed_at).toISOString(),
+    clicks: Number(r.clicks ?? 0),
     status: r.status,
   };
 }
@@ -115,6 +116,21 @@ export const postgresAdapter: StoreAdapter = {
        RETURNING value`,
     );
     return Number(rows[0]?.value ?? 0);
+  },
+
+  async recordClick(submissionId) {
+    const { rows } = await (await pool()).query(
+      `UPDATE submissions SET clicks = clicks + 1 WHERE id = $1 RETURNING clicks`,
+      [submissionId],
+    );
+    return rows[0] ? Number(rows[0].clicks) : undefined;
+  },
+
+  async totalClicks() {
+    const { rows } = await (await pool()).query(
+      `SELECT COALESCE(SUM(clicks), 0) AS total FROM submissions`,
+    );
+    return Number(rows[0]?.total ?? 0);
   },
 
   async commitBid(input: CommitBidInput): Promise<CommitBidResult> {

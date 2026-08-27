@@ -18,6 +18,7 @@ export const MOCK_SUBMISSIONS: Submission[] = [
     currentBid: 2400,
     bidderName: 'M. Kessler',
     claimedAt: ago(14),
+    clicks: 0,
     status: 'active',
   },
   {
@@ -30,6 +31,7 @@ export const MOCK_SUBMISSIONS: Submission[] = [
     currentBid: 1310,
     bidderName: 'anon',
     claimedAt: ago(38),
+    clicks: 0,
     status: 'active',
   },
   {
@@ -42,6 +44,7 @@ export const MOCK_SUBMISSIONS: Submission[] = [
     currentBid: 880,
     bidderName: 'D. Okonkwo',
     claimedAt: ago(51),
+    clicks: 0,
     status: 'active',
   },
   {
@@ -54,6 +57,7 @@ export const MOCK_SUBMISSIONS: Submission[] = [
     currentBid: 605,
     bidderName: 'gray_hat',
     claimedAt: ago(72),
+    clicks: 0,
     status: 'active',
   },
   {
@@ -66,6 +70,7 @@ export const MOCK_SUBMISSIONS: Submission[] = [
     currentBid: 420,
     bidderName: 'R. Vance',
     claimedAt: ago(96),
+    clicks: 0,
     status: 'active',
   },
   {
@@ -78,6 +83,7 @@ export const MOCK_SUBMISSIONS: Submission[] = [
     currentBid: 275,
     bidderName: '0xsable',
     claimedAt: ago(120),
+    clicks: 0,
     status: 'active',
   },
   {
@@ -90,6 +96,7 @@ export const MOCK_SUBMISSIONS: Submission[] = [
     currentBid: 190,
     bidderName: 'studio',
     claimedAt: ago(150),
+    clicks: 0,
     status: 'active',
   },
   {
@@ -102,6 +109,7 @@ export const MOCK_SUBMISSIONS: Submission[] = [
     currentBid: 120,
     bidderName: 'oncall',
     claimedAt: ago(180),
+    clicks: 0,
     status: 'active',
   },
   {
@@ -114,6 +122,7 @@ export const MOCK_SUBMISSIONS: Submission[] = [
     currentBid: 75,
     bidderName: 'anon',
     claimedAt: ago(210),
+    clicks: 0,
     status: 'active',
   },
   {
@@ -126,6 +135,7 @@ export const MOCK_SUBMISSIONS: Submission[] = [
     currentBid: 48,
     bidderName: 'J. Ferrer',
     claimedAt: ago(240),
+    clicks: 0,
     status: 'active',
   },
   {
@@ -138,6 +148,7 @@ export const MOCK_SUBMISSIONS: Submission[] = [
     currentBid: 31,
     bidderName: 'sable',
     claimedAt: ago(280),
+    clicks: 0,
     status: 'active',
   },
   {
@@ -150,6 +161,7 @@ export const MOCK_SUBMISSIONS: Submission[] = [
     currentBid: 22,
     bidderName: 'anon',
     claimedAt: ago(320),
+    clicks: 0,
     status: 'active',
   },
   {
@@ -162,6 +174,7 @@ export const MOCK_SUBMISSIONS: Submission[] = [
     currentBid: 14,
     bidderName: 'nightshift',
     claimedAt: ago(360),
+    clicks: 0,
     status: 'active',
   },
   {
@@ -174,6 +187,7 @@ export const MOCK_SUBMISSIONS: Submission[] = [
     currentBid: 9,
     bidderName: 'anon',
     claimedAt: ago(400),
+    clicks: 0,
     status: 'active',
   },
   {
@@ -186,6 +200,7 @@ export const MOCK_SUBMISSIONS: Submission[] = [
     currentBid: 5,
     bidderName: 'anon',
     claimedAt: ago(440),
+    clicks: 0,
     status: 'active',
   },
 ];

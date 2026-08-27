@@ -106,6 +106,14 @@ export default function CaseModal({
             </div>
             <div>
               <dt className="font-[family-name:var(--font-case)] text-[9px] uppercase tracking-[0.2em] text-[color:var(--color-ink-faint)]">
+                Clicks
+              </dt>
+              <dd className="font-[family-name:var(--font-case)] text-lg leading-tight text-[color:var(--color-ink)]">
+                {submission.clicks.toLocaleString('en-US')}
+              </dd>
+            </div>
+            <div>
+              <dt className="font-[family-name:var(--font-case)] text-[9px] uppercase tracking-[0.2em] text-[color:var(--color-ink-faint)]">
                 Lead
               </dt>
               <dd className="truncate">

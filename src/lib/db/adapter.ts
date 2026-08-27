@@ -21,6 +21,10 @@ export interface StoreAdapter {
   visitors(): Promise<number>;
   bumpVisitors(): Promise<number>;
 
+  /** Records an open and returns the new count for that case. */
+  recordClick(submissionId: string): Promise<number | undefined>;
+  totalClicks(): Promise<number>;
+
   commitBid(input: CommitBidInput): Promise<CommitBidResult>;
 }
 

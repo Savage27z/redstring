@@ -86,6 +86,17 @@ export const memoryAdapter: StoreAdapter = {
     return d.visitors;
   },
 
+  async recordClick(submissionId) {
+    const found = db().submissions.find((s) => s.id === submissionId);
+    if (!found) return undefined;
+    found.clicks = (found.clicks ?? 0) + 1;
+    return found.clicks;
+  },
+
+  async totalClicks() {
+    return db().submissions.reduce((sum, s) => sum + (s.clicks ?? 0), 0);
+  },
+
   async commitBid(input: CommitBidInput): Promise<CommitBidResult> {
     const d = db();
 
@@ -135,6 +146,7 @@ export const memoryAdapter: StoreAdapter = {
         currentBid: input.amount,
         bidderName: input.bidderName,
         claimedAt: new Date().toISOString(),
+        clicks: 0,
         status: 'active',
       };
       d.submissions.push(submission);

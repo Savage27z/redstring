@@ -25,11 +25,12 @@ export function storeBackend(): string {
 }
 
 export async function getBoardState(): Promise<BoardState> {
-  const [submissions, recentBids, totalRaised, visitors] = await Promise.all([
+  const [submissions, recentBids, totalRaised, visitors, totalClicks] = await Promise.all([
     adapter.listActive(),
     adapter.recentBids(12),
     adapter.totalRaised(),
     adapter.visitors(),
+    adapter.totalClicks(),
   ]);
 
   const topBid = submissions[0]?.currentBid ?? 0;
@@ -46,8 +47,14 @@ export async function getBoardState(): Promise<BoardState> {
       priceToTakeNumberOne: Math.max(priceToBeat(topBid), MIN_BID),
       minimumBid: MIN_BID,
       visitors,
+      totalClicks,
     },
   };
+}
+
+/** Records that someone opened a case file. */
+export async function recordClick(submissionId: string): Promise<number | undefined> {
+  return adapter.recordClick(submissionId);
 }
 
 export async function bumpVisitors(): Promise<number> {
